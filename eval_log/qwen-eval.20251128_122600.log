@@ -1,0 +1,52 @@
++ TEMP_G1=0.6
++ TEMP_G2=0.0
++ NSAMP_G1=128
++ NSAMP_G2=128
++ export EVAL_ONE_MODEL_TIMEOUT=21600
++ EVAL_ONE_MODEL_TIMEOUT=21600
++ export PASS_AT_KS=1,128
++ PASS_AT_KS=1,128
++ export TORCH_CPP_LOG_LEVEL=ERROR
++ TORCH_CPP_LOG_LEVEL=ERROR
+++ seq -s, 0 0
++ export CUDA_VISIBLE_DEVICES=0
++ CUDA_VISIBLE_DEVICES=0
++ export VLLM_WORKER_MULTIPROC_METHOD=spawn
++ VLLM_WORKER_MULTIPROC_METHOD=spawn
++ export PYTHONUNBUFFERED=1
++ PYTHONUNBUFFERED=1
++ export VLLM_USE_FLASHINFER_SAMPLER=1
++ VLLM_USE_FLASHINFER_SAMPLER=1
++ args=(--model_root "$MODEL_ROOT" --out_root "$OUT_ROOT" --prompt_type "$PROMPT_TYPE" --max_tokens_per_call "$MAX_TOKENS" --nproc "$NUM_GPUS" --base_root "$BASE_ROOT" --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 "$TEMP_G1" --temperature_g2 "$TEMP_G2" --n_sampling_g1 "$NSAMP_G1" --n_sampling_g2 "$NSAMP_G2" --cleanup_exported)
++ '[' false = true ']'
++ echo '[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --cleanup_exported'
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --cleanup_exported
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --cleanup_exported
+INFO 11-28 12:26:05 [__init__.py:239] Automatically detected platform cuda.
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/latex2sympy2.py", line 8, in <module>
+    from gen.PSParser import PSParser
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/gen/PSParser.py", line 556, in <module>
+    class PSParser (Parser):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/gen/PSParser.py", line 560, in PSParser
+    atn = ATNDeserializer().deserialize(serializedATN())
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/antlr4/atn/ATNDeserializer.py", line 28, in deserialize
+    self.checkVersion()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/antlr4/atn/ATNDeserializer.py", line 50, in checkVersion
+    raise Exception("Could not deserialize ATN with version {} (expected {}).".format(ord(version), SERIALIZED_VERSION))
+Exception: Could not deserialize ATN with version 3 (expected 4).
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 20, in <module>
+    from math_eval import main as eval_one_dataset
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/math_eval.py", line 13, in <module>
+    from evaluate import evaluate
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/evaluate.py", line 7, in <module>
+    from grader import *
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/grader.py", line 20, in <module>
+    from latex2sympy2 import latex2sympy
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/latex2sympy2.py", line 12, in <module>
+    from .gen.PSParser import PSParser
+ImportError: attempted relative import with no known parent package

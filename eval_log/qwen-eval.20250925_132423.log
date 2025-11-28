@@ -1,0 +1,86 @@
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_DeepSeek-1.5B --out_root /uge_mnt/home/caixq/project/noisy-RLVR/new_eval_noise_rlvr_DeepSeek-1.5B_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
+INFO 09-25 13:24:29 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-25 13:24:33] [INFO] --cleanup_exported 已忽略，导出目录将保留在 /data/giil/caixq/export
+[2025-09-25 13:24:33] 发现 10 个 run。先检查缺失指标，再确保导出模型存在并提交评测任务。
+[2025-09-25 13:24:33] ⏭ 跳过 base-only：DeepSeek-R1-Distill-Qwen-1.5B（g1/g2 已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：C_llm_verifier_grpo_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：D_rb_online_rho1_algo2_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：D_rb_online_rho1_algo2_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：D_rb_online_rho1_algo2_DeepSeek-R1-Distill-Qwen-1.5B__global_step_300（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：D_rb_online_rho1_algo2_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：E_rb_rule_addon_tinyv_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：E_rb_rule_addon_tinyv_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：E_rb_rule_addon_tinyv_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：rb_manual_algo1_est_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:33] ⏭ 跳过：rb_manual_algo1_est_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/spawn.py", line 116, in spawn_main
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 570, in <module>
+    main()
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 553, in main
+    result = result_queue.get()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/queues.py", line 103, in get
+    res = self._recv_bytes()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 221, in recv_bytes
+    buf = self._recv_bytes(maxlength)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 419, in _recv_bytes
+    buf = self._recv(4)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 384, in _recv
+    chunk = read(handle, remaining)
+KeyboardInterrupt
+    exitcode = _main(fd, parent_sentinel)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/spawn.py", line 125, in _main
+    prepare(preparation_data)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/spawn.py", line 236, in prepare
+    _fixup_main_from_path(data['init_main_from_path'])
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/spawn.py", line 287, in _fixup_main_from_path
+    main_content = runpy.run_path(main_path,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/runpy.py", line 269, in run_path
+    return _run_module_code(code, init_globals, run_name,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/runpy.py", line 96, in _run_module_code
+    _run_code(code, mod_globals, init_globals,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 20, in <module>
+    from math_eval import main as eval_one_dataset
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/math_eval.py", line 6, in <module>
+    from vllm import LLM, SamplingParams
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/__init__.py", line 10, in <module>
+    import vllm.env_override  # isort:skip  # noqa: F401
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/env_override.py", line 4, in <module>
+    import torch
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/__init__.py", line 2108, in <module>
+    from torch import _VF as _VF, functional as functional  # usort: skip
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/functional.py", line 7, in <module>
+    import torch.nn.functional as F
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/nn/__init__.py", line 8, in <module>
+    from torch.nn.modules import *  # usort: skip # noqa: F403
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/nn/modules/__init__.py", line 1, in <module>
+    from .module import Module  # usort: skip
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/nn/modules/module.py", line 29, in <module>
+    from torch.utils._python_dispatch import is_traceable_wrapper_subclass
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/utils/_python_dispatch.py", line 12, in <module>
+    import torchgen.model
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torchgen/model.py", line 2004, in <module>
+    class Argument:
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/dataclasses.py", line 1169, in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/dataclasses.py", line 1038, in _process_class
+    _set_new_attribute(cls, '__repr__', _repr_fn(flds, globals))
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/dataclasses.py", line 583, in _repr_fn
+    fn = _create_fn('__repr__',
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/dataclasses.py", line 435, in _create_fn
+    return ns['__create_fn__'](**locals)
+  File "<string>", line 1, in __create_fn__
+KeyboardInterrupt

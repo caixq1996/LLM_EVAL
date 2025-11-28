@@ -1,0 +1,5 @@
+[INFO] Log file: eval_log/qwen-eval.20250906_010730.log
+[INFO] JobID=17571511 Host=cf9cb5129c27 Date=Sat Sep  6 01:07:30 JST 2025
+[INFO] CUDA_VISIBLE_DEVICES=0,1,2,3
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/verl/bin/python3 -u tools/run_qwen_eval_all.py --model_root /uge_mnt/home/caixq/project/noisy-RLVR/checkpoints/noise_rlvr_v2 --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_qwen_test_v2 --prompt_type qwen25-math-cot --max_tokens_per_call 2048 --nproc 4 --base_root /hss/giil/caixq/model
+/uge_mnt/home/caixq/miniconda3/envs/verl/bin/python3: can't open file '/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all.py': [Errno 2] No such file or directory

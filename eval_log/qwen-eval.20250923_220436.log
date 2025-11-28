@@ -1,0 +1,257 @@
++ TEMP_G1=0.6
++ TEMP_G2=0.0
++ NSAMP_G1=8
++ NSAMP_G2=8
++ export EVAL_ONE_MODEL_TIMEOUT=21600
++ EVAL_ONE_MODEL_TIMEOUT=21600
++ export PASS_AT_KS=1,8
++ PASS_AT_KS=1,8
++ export TORCH_CPP_LOG_LEVEL=ERROR
++ TORCH_CPP_LOG_LEVEL=ERROR
+++ seq -s, 0 7
++ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
++ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
++ export VLLM_WORKER_MULTIPROC_METHOD=spawn
++ VLLM_WORKER_MULTIPROC_METHOD=spawn
++ export PYTHONUNBUFFERED=1
++ PYTHONUNBUFFERED=1
++ export VLLM_USE_FLASHINFER_SAMPLER=1
++ VLLM_USE_FLASHINFER_SAMPLER=1
++ args=(--model_root "$MODEL_ROOT" --out_root "$OUT_ROOT" --prompt_type "$PROMPT_TYPE" --max_tokens_per_call "$MAX_TOKENS" --nproc "$NUM_GPUS" --base_root "$BASE_ROOT" --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 "$TEMP_G1" --temperature_g2 "$TEMP_G2" --n_sampling_g1 "$NSAMP_G1" --n_sampling_g2 "$NSAMP_G2" --cleanup_exported)
++ echo '[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_1_5b_128batchsize_deepscaler_noise_robust --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_noise_rlvr_1_5b_128batchsize_deepscaler_noise_robust_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 8 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported'
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_1_5b_128batchsize_deepscaler_noise_robust --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_noise_rlvr_1_5b_128batchsize_deepscaler_noise_robust_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 8 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_1_5b_128batchsize_deepscaler_noise_robust --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_noise_rlvr_1_5b_128batchsize_deepscaler_noise_robust_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 8 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
+INFO 09-23 22:07:31 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-23 22:08:35] [INFO] --cleanup_exported 已忽略，导出目录将保留在 /data/giil/caixq/export
+[2025-09-23 22:08:35] 发现 28 个 run。先检查缺失指标，再确保导出模型存在并提交评测任务。
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.00_0.20_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.00_0.20_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.05_0.20_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.05_0.20_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.09_0.20_Qwen2.5-math-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.09_0.20_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.09_0.20_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.10_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.10_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.15_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.15_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.19_Qwen2.5-math-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.19_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.19_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.21_Qwen2.5-math-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.21_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.21_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.25_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:08:35] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.25_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+INFO 09-23 22:08:41 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-23 22:08:46] ▶ 加载模型（一次）：/hss/giil/caixq/model/Qwen2.5-math-1.5B
+INFO 09-23 22:09:14 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:09:14 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:09:14 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:09:14 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+Sliding Window Attention is enabled but not implemented for `sdpa`; unexpected results may be encountered.
+[2025-09-23 22:10:35] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.30_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:10:35 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:10:35 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:10:35 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:10:35 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:12:04] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.30_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:12:04 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:12:04 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:12:04 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:12:04 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:12:04] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B/global_step_100
+INFO 09-23 22:12:04 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:12:04 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:12:04 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:12:04 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:12:04] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:12:04 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:12:04 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:12:04 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:12:04 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:12:04] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:12:04 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:12:04 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:12:04 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:12:04 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:13:31] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B/global_step_100
+INFO 09-23 22:13:31 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:13:31 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:13:31 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:13:31 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:14:58] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:14:58 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:14:58 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:14:58 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:14:58 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:16:26] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:16:26 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:16:26 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:16:26 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:16:26 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:17:51] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.15_0.20_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:17:51 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:17:51 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:17:51 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:17:51 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:19:20] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.15_0.20_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:19:20 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:19:20 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:19:20 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:19:20 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:20:52] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.20_0.20_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:20:52 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:20:52 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:20:52 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:20:52 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:22:22] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo1_est_r00.10_r10.20_est0.20_0.20_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:22:22 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:22:22 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:22:22 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:22:22 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:22:22] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.00_0.20_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:22:22] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.00_0.20_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:22:22] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.05_0.20_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:23:50] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.05_0.20_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:23:50 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:23:50 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:23:50 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:23:50 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:25:17] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.20_Qwen2.5-math-1.5B/global_step_100
+INFO 09-23 22:25:17 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:25:17 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:25:17 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:25:17 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:26:43] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.20_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:26:43 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:26:43 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:26:43 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:26:43 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:28:07] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B/global_step_100
+INFO 09-23 22:28:07 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:28:07 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:28:07 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:28:07 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:29:32] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:29:32 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:29:32 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:29:32 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:29:32 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:30:57] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:30:57 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:30:57 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:30:57 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:30:57 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.10_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.10_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.15_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.15_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.19_Qwen2.5-math-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.19_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:57] [WARN] 导出失败：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.19_Qwen2.5-math-1.5B__global_step_313 -> 
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.21_Qwen2.5-math-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.21_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:57] [WARN] 导出失败：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.21_Qwen2.5-math-1.5B__global_step_313 -> 
+[2025-09-23 22:30:57] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.25_Qwen2.5-math-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-23 22:30:58] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.25_Qwen2.5-math-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-23 22:32:25] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.30_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:32:25 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:32:25 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:32:25 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:32:25 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:33:52] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.30_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:33:52 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:33:52 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:33:52 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:33:52 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:35:18] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B/global_step_100
+INFO 09-23 22:35:18 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:35:18 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:35:18 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:35:18 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:36:48] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:36:48 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:36:48 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:36:48 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:36:48 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:38:18] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:38:18 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:38:18 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:38:18 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:38:18 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:39:45] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B/global_step_100
+INFO 09-23 22:39:45 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:39:45 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:39:45 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:39:45 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:41:13] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:41:13 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:41:13 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:41:13 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:41:13 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:42:41] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:42:41 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:42:41 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:42:41 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:42:41 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:44:09] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.15_0.20_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:44:09 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:44:09 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:44:09 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:44:09 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:45:38] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.15_0.20_Qwen2.5-math-1.5B/global_step_313
+INFO 09-23 22:45:38 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:45:38 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:45:38 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:45:38 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:47:04] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.20_0.20_Qwen2.5-math-1.5B/global_step_200
+INFO 09-23 22:47:04 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:47:04 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:47:04 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:47:04 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:48:30] ⚠ 模型 base__Qwen2.5-math-1.5B 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.20_0.20_Qwen2.5-math-1.5B/global_step_313[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.30_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.30_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B__global_step_100 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B__global_step_100 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.15_0.20_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.15_0.20_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.20_0.20_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo1_est_r00.10_r10.20_est0.20_0.20_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.05_0.20_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.20_Qwen2.5-math-1.5B__global_step_100 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.20_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B__global_step_100 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.09_0.21_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.30_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.30_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B__global_step_100 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.19_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B__global_step_100 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.11_0.20_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.15_0.20_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.15_0.20_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.20_0.20_Qwen2.5-math-1.5B__global_step_200 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+INFO 09-23 22:48:30 [config.py:717] This model supports multiple tasks: {'generate', 'reward', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+INFO 09-23 22:48:30 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 22:48:30 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 22:48:30 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+[2025-09-23 22:48:30] ⚠ 模型 B_rb_manual_algo2_est_r00.10_r10.20_est0.20_0.20_Qwen2.5-math-1.5B__global_step_313 评测失败：ValueError('Total number of attention heads (12) must be divisible by tensor parallel size (8).')
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 570, in <module>
+    main()
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 564, in main
+    raise RuntimeError('部分模型评测失败，详见日志输出。')
+RuntimeError: 部分模型评测失败，详见日志输出。

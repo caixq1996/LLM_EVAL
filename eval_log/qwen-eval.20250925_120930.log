@@ -1,0 +1,146 @@
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_Qwen2.5-1.5B --out_root /uge_mnt/home/caixq/project/noisy-RLVR/new_eval_noise_rlvr_Qwen2.5-1.5B_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 4 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
+INFO 09-25 12:09:35 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-25 12:09:40] [INFO] --cleanup_exported 已忽略，导出目录将保留在 /data/giil/caixq/export
+[2025-09-25 12:09:40] 发现 17 个 run。先检查缺失指标，再确保导出模型存在并提交评测任务。
+[2025-09-25 12:09:40] ⏭ 跳过 base-only：DeepSeek-R1-Distill-Qwen-1.5B（g1/g2 已有 metrics）
+[2025-09-25 12:09:40] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 12:09:40] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 12:09:40] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 12:09:40] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 12:09:40] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+INFO 09-25 12:09:45 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-25 12:09:49] ▶ 加载模型（一次）：/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B/global_step_313
+INFO 09-25 12:10:01 [config.py:717] This model supports multiple tasks: {'classify', 'generate', 'embed', 'score', 'reward'}. Defaulting to 'generate'.
+INFO 09-25 12:10:01 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-25 12:10:01 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-25 12:10:01 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+INFO 09-25 12:10:07 [__init__.py:239] Automatically detected platform cuda.
+INFO 09-25 12:10:12 [core.py:58] Initializing a V1 LLM engine (v0.8.5.post1) with config: model='/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B/global_step_313', speculative_config=None, tokenizer='/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B/global_step_313', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=131072, download_dir=None, load_format=auto, tensor_parallel_size=4, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto,  device_config=cuda, decoding_config=DecodingConfig(guided_decoding_backend='auto', reasoning_backend=None), observability_config=ObservabilityConfig(show_hidden_metrics=False, otlp_traces_endpoint=None, collect_model_forward_time=False, collect_model_execute_time=False), seed=None, served_model_name=/data/giil/caixq/export/B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B/global_step_313, num_scheduler_steps=1, multi_step_stream_outputs=True, enable_prefix_caching=True, chunked_prefill_enabled=True, use_async_output_proc=False, disable_mm_preprocessor_cache=False, mm_processor_kwargs=None, pooler_config=None, compilation_config={"splitting_ops":[],"compile_sizes":[],"cudagraph_capture_sizes":[],"max_capture_size":0}
+WARNING 09-25 12:10:12 [multiproc_worker_utils.py:306] Reducing Torch parallelism from 128 threads to 1 to avoid unnecessary CPU contention. Set OMP_NUM_THREADS in the external environment to tune this value as needed.
+INFO 09-25 12:10:12 [shm_broadcast.py:266] vLLM message queue communication handle: Handle(local_reader_ranks=[0, 1, 2, 3], buffer_handle=(4, 10485760, 10, 'psm_c8fb6e9d'), local_subscribe_addr='ipc:///tmp/17613850.1.g3ndev/27952ce0-ee06-44c6-8848-665f11166a99', remote_subscribe_addr=None, remote_addr_ipv6=False)
+INFO 09-25 12:10:17 [__init__.py:239] Automatically detected platform cuda.
+INFO 09-25 12:10:17 [__init__.py:239] Automatically detected platform cuda.
+INFO 09-25 12:10:17 [__init__.py:239] Automatically detected platform cuda.
+INFO 09-25 12:10:17 [__init__.py:239] Automatically detected platform cuda.
+WARNING 09-25 12:10:22 [utils.py:2522] Methods determine_num_available_blocks,device_config,get_cache_block_size_bytes,initialize_cache not implemented in <vllm.v1.worker.gpu_worker.Worker object at 0x7fedfddc4190>
+[1;36m(VllmWorker rank=0 pid=322)[0;0m INFO 09-25 12:10:23 [shm_broadcast.py:266] vLLM message queue communication handle: Handle(local_reader_ranks=[0], buffer_handle=(1, 10485760, 10, 'psm_5a847c2c'), local_subscribe_addr='ipc:///tmp/17613850.1.g3ndev/cc43a6d9-d180-472c-af39-9b80f1c581f5', remote_subscribe_addr=None, remote_addr_ipv6=False)
+WARNING 09-25 12:10:23 [utils.py:2522] Methods determine_num_available_blocks,device_config,get_cache_block_size_bytes,initialize_cache not implemented in <vllm.v1.worker.gpu_worker.Worker object at 0x7f122c6042b0>
+[1;36m(VllmWorker rank=1 pid=323)[0;0m INFO 09-25 12:10:23 [shm_broadcast.py:266] vLLM message queue communication handle: Handle(local_reader_ranks=[0], buffer_handle=(1, 10485760, 10, 'psm_38e048bc'), local_subscribe_addr='ipc:///tmp/17613850.1.g3ndev/4f9ffbdd-82f4-41d8-97b5-a9aed3f41460', remote_subscribe_addr=None, remote_addr_ipv6=False)
+WARNING 09-25 12:10:23 [utils.py:2522] Methods determine_num_available_blocks,device_config,get_cache_block_size_bytes,initialize_cache not implemented in <vllm.v1.worker.gpu_worker.Worker object at 0x7ffa8e234160>
+[1;36m(VllmWorker rank=2 pid=324)[0;0m INFO 09-25 12:10:23 [shm_broadcast.py:266] vLLM message queue communication handle: Handle(local_reader_ranks=[0], buffer_handle=(1, 10485760, 10, 'psm_ffd116d6'), local_subscribe_addr='ipc:///tmp/17613850.1.g3ndev/6e5a0c8d-b996-46af-b178-12a483b5941e', remote_subscribe_addr=None, remote_addr_ipv6=False)
+WARNING 09-25 12:10:23 [utils.py:2522] Methods determine_num_available_blocks,device_config,get_cache_block_size_bytes,initialize_cache not implemented in <vllm.v1.worker.gpu_worker.Worker object at 0x7fd2cd178160>
+[1;36m(VllmWorker rank=3 pid=325)[0;0m INFO 09-25 12:10:23 [shm_broadcast.py:266] vLLM message queue communication handle: Handle(local_reader_ranks=[0], buffer_handle=(1, 10485760, 10, 'psm_3107a6c1'), local_subscribe_addr='ipc:///tmp/17613850.1.g3ndev/3585d327-5603-4314-a999-eb517f47a7fd', remote_subscribe_addr=None, remote_addr_ipv6=False)
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 570, in <module>
+    main()
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 553, in main
+    result = result_queue.get()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/queues.py", line 103, in get
+    res = self._recv_bytes()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 221, in recv_bytes
+    buf = self._recv_bytes(maxlength)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 419, in _recv_bytes
+    buf = self._recv(4)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 384, in _recv
+    chunk = read(handle, remaining)
+KeyboardInterrupt
+Exception ignored in sys.unraisablehook: <built-in function unraisablehook>
+KeyboardInterrupt
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 398, in __init__
+    self._wait_for_engine_startup()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 423, in _wait_for_engine_startup
+    events = poller.poll(STARTUP_POLL_PERIOD_MS)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/zmq/sugar/poll.py", line 106, in poll
+    return zmq_poll(self.sockets, timeout=timeout)
+  File "zmq/backend/cython/_zmq.py", line 1665, in zmq.backend.cython._zmq.zmq_poll
+  File "zmq/backend/cython/_zmq.py", line 176, in zmq.backend.cython._zmq._check_rc
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 352, in _execute_with_timeout
+    _execute_payload(payload)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 255, in _execute_payload
+    run_groups_with_shared_llm(
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 186, in run_groups_with_shared_llm
+    llm, tokenizer = load_llm_and_tokenizer(model_dir, use_vllm, pipeline_parallel_size)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 139, in load_llm_and_tokenizer
+    llm = LLM(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/utils.py", line 1161, in inner
+    return fn(*args, **kwargs)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/entrypoints/llm.py", line 247, in __init__
+    self.llm_engine = LLMEngine.from_engine_args(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/engine/llm_engine.py", line 510, in from_engine_args
+    return engine_cls.from_vllm_config(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/llm_engine.py", line 112, in from_vllm_config
+    return cls(vllm_config=vllm_config,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/llm_engine.py", line 92, in __init__
+    self.engine_core = EngineCoreClient.make_client(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 73, in make_client
+    return SyncMPClient(vllm_config, executor_class, log_stats)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 494, in __init__
+    super().__init__(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 410, in __init__
+    self._finalizer()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/weakref.py", line 591, in __call__
+    return info.func(*info.args, **(info.kwargs or {}))
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 319, in __call__
+    core_engine.close()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 295, in close
+    proc_handle.shutdown()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/utils.py", line 128, in shutdown
+    self._finalizer()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/weakref.py", line 591, in __call__
+    return info.func(*info.args, **(info.kwargs or {}))
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/utils.py", line 137, in shutdown
+    proc.join(5)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 149, in join
+    res = self._popen.wait(timeout)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/popen_fork.py", line 40, in wait
+    if not wait([self.sentinel], timeout):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 936, in wait
+    ready = selector.select(timeout)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/selectors.py", line 416, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 315, in _bootstrap
+    self.run()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 335, in _worker_loop
+    _execute_with_timeout(payload, timeout)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 352, in _execute_with_timeout
+    _execute_payload(payload)
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 318, in _bootstrap
+    util._exit_function()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/util.py", line 357, in _exit_function
+    p.join()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 149, in join
+    res = self._popen.wait(timeout)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/popen_fork.py", line 43, in wait
+    return self.poll(os.WNOHANG if timeout == 0.0 else 0)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/popen_fork.py", line 27, in poll
+    pid, sts = os.waitpid(self.pid, flag)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/weakref.py", line 667, in _exitfunc
+    f()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/weakref.py", line 591, in __call__
+    return info.func(*info.args, **(info.kwargs or {}))
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/executor/multiproc_executor.py", line 228, in shutdown
+    for w in self.workers:
+AttributeError: 'MultiprocExecutor' object has no attribute 'workers'
+/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/resource_tracker.py:224: UserWarning: resource_tracker: There appear to be 4 leaked shared_memory objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

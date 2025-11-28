@@ -1,0 +1,111 @@
++ TEMP_G1=0.6
++ TEMP_G2=0.0
++ NSAMP_G1=8
++ NSAMP_G2=8
++ export EVAL_ONE_MODEL_TIMEOUT=21600
++ EVAL_ONE_MODEL_TIMEOUT=21600
++ export PASS_AT_KS=1,8
++ PASS_AT_KS=1,8
++ export TORCH_CPP_LOG_LEVEL=ERROR
++ TORCH_CPP_LOG_LEVEL=ERROR
+++ seq -s, 0 3
++ export CUDA_VISIBLE_DEVICES=0,1,2,3
++ CUDA_VISIBLE_DEVICES=0,1,2,3
++ export VLLM_WORKER_MULTIPROC_METHOD=spawn
++ VLLM_WORKER_MULTIPROC_METHOD=spawn
++ export PYTHONUNBUFFERED=1
++ PYTHONUNBUFFERED=1
++ export VLLM_USE_FLASHINFER_SAMPLER=1
++ VLLM_USE_FLASHINFER_SAMPLER=1
++ args=(--model_root "$MODEL_ROOT" --out_root "$OUT_ROOT" --prompt_type "$PROMPT_TYPE" --max_tokens_per_call "$MAX_TOKENS" --nproc "$NUM_GPUS" --base_root "$BASE_ROOT" --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 "$TEMP_G1" --temperature_g2 "$TEMP_G2" --n_sampling_g1 "$NSAMP_G1" --n_sampling_g2 "$NSAMP_G2" --cleanup_exported)
++ '[' false = true ']'
++ echo '[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_Qwen2.5-1.5B --out_root /uge_mnt/home/caixq/project/noisy-RLVR/new_eval_noise_rlvr_Qwen2.5-1.5B_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 4 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported'
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_Qwen2.5-1.5B --out_root /uge_mnt/home/caixq/project/noisy-RLVR/new_eval_noise_rlvr_Qwen2.5-1.5B_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 4 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_Qwen2.5-1.5B --out_root /uge_mnt/home/caixq/project/noisy-RLVR/new_eval_noise_rlvr_Qwen2.5-1.5B_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 4 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
+INFO 09-25 11:29:36 [__init__.py:239] Automatically detected platform cuda.
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 20, in <module>
+    from math_eval import main as eval_one_dataset
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/math_eval.py", line 6, in <module>
+    from vllm import LLM, SamplingParams
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/__init__.py", line 12, in <module>
+    from vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/engine/arg_utils.py", line 29, in <module>
+    from vllm.executor.executor_base import ExecutorBase
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/executor/executor_base.py", line 16, in <module>
+    from vllm.model_executor.layers.sampler import SamplerOutput
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/model_executor/layers/sampler.py", line 26, in <module>
+    import flashinfer.sampling
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/flashinfer/__init__.py", line 18, in <module>
+    from .activation import gelu_and_mul as gelu_and_mul
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/flashinfer/activation.py", line 21, in <module>
+    from .jit import gen_act_and_mul_module, has_prebuilt_ops, load_cuda_ops    # noqa: F401
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/flashinfer/jit/__init__.py", line 18, in <module>
+    from .activation import gen_act_and_mul_module as gen_act_and_mul_module
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/flashinfer/jit/activation.py", line 21, in <module>
+    from .core import load_cuda_ops
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/flashinfer/jit/core.py", line 9, in <module>
+    import torch.utils.cpp_extension as torch_cpp_ext
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/utils/cpp_extension.py", line 24, in <module>
+    from .hipify import hipify_python
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/utils/hipify/hipify_python.py", line 801, in <module>
+    RE_CAFFE2_PREPROCESSOR = re.compile(CAFFE2_TRIE.export_to_regex())
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/re.py", line 251, in compile
+    return _compile(pattern, flags)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/re.py", line 303, in _compile
+    p = sre_compile.compile(pattern, flags)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_compile.py", line 764, in compile
+    p = sre_parse.parse(p, flags)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 948, in parse
+    p = _parse_sub(source, state, flags & SRE_FLAG_VERBOSE, 0)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 834, in _parse
+    p = _parse_sub(source, state, sub_verbose, nested + 1)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 443, in _parse_sub
+    itemsappend(_parse(source, state, verbose, nested + 1,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 511, in _parse
+    sourceget()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/sre_parse.py", line 256, in get
+    self.__next()
+KeyboardInterrupt

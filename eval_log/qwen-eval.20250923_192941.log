@@ -1,0 +1,32 @@
++ TEMP_G1=0.6
++ TEMP_G2=0.0
++ NSAMP_G1=8
++ NSAMP_G2=8
++ export EVAL_ONE_MODEL_TIMEOUT=21600
++ EVAL_ONE_MODEL_TIMEOUT=21600
++ export PASS_AT_KS=1,8
++ PASS_AT_KS=1,8
++ export TORCH_CPP_LOG_LEVEL=ERROR
++ TORCH_CPP_LOG_LEVEL=ERROR
+++ seq -s, 0 3
++ export CUDA_VISIBLE_DEVICES=0,1,2,3
++ CUDA_VISIBLE_DEVICES=0,1,2,3
++ export VLLM_WORKER_MULTIPROC_METHOD=spawn
++ VLLM_WORKER_MULTIPROC_METHOD=spawn
++ export PYTHONUNBUFFERED=1
++ PYTHONUNBUFFERED=1
++ export VLLM_USE_FLASHINFER_SAMPLER=1
++ VLLM_USE_FLASHINFER_SAMPLER=1
++ args=(--model_root "$MODEL_ROOT" --out_root "$OUT_ROOT" --prompt_type "$PROMPT_TYPE" --max_tokens_per_call "$MAX_TOKENS" --nproc "$NUM_GPUS" --base_root "$BASE_ROOT" --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 "$TEMP_G1" --temperature_g2 "$TEMP_G2" --n_sampling_g1 "$NSAMP_G1" --n_sampling_g2 "$NSAMP_G2" --cleanup_exported)
++ echo '[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_robust_algo1 --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_noise_robust_algo1_qwen25-math-cot --prompt_type qwen25-math-cot --max_tokens_per_call 3072 --nproc 4 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported'
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_robust_algo1 --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_noise_robust_algo1_qwen25-math-cot --prompt_type qwen25-math-cot --max_tokens_per_call 3072 --nproc 4 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_robust_algo1 --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_noise_robust_algo1_qwen25-math-cot --prompt_type qwen25-math-cot --max_tokens_per_call 3072 --nproc 4 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
+INFO 09-23 19:29:46 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-23 19:29:50] [INFO] --cleanup_exported 已忽略，导出目录将保留在 /data/giil/caixq/export
+[2025-09-23 19:29:50] 发现 4 个 run。先检查缺失指标，再确保导出模型存在并提交评测任务。
+INFO 09-23 19:29:55 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-23 19:29:59] ▶ 加载模型（一次）：/hss/giil/caixq/model/Qwen2.5-math-1.5B
+INFO 09-23 19:30:12 [config.py:717] This model supports multiple tasks: {'embed', 'classify', 'score', 'reward', 'generate'}. Defaulting to 'generate'.
+INFO 09-23 19:30:12 [config.py:1770] Defaulting to use mp for distributed inference
+INFO 09-23 19:30:12 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-23 19:30:12 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used

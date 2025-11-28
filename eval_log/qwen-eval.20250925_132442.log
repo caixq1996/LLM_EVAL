@@ -1,0 +1,161 @@
++ TEMP_G1=0.6
++ TEMP_G2=0.0
++ NSAMP_G1=8
++ NSAMP_G2=8
++ export EVAL_ONE_MODEL_TIMEOUT=21600
++ EVAL_ONE_MODEL_TIMEOUT=21600
++ export PASS_AT_KS=1,8
++ PASS_AT_KS=1,8
++ export TORCH_CPP_LOG_LEVEL=ERROR
++ TORCH_CPP_LOG_LEVEL=ERROR
+++ seq -s, 0 0
++ export CUDA_VISIBLE_DEVICES=0
++ CUDA_VISIBLE_DEVICES=0
++ export VLLM_WORKER_MULTIPROC_METHOD=spawn
++ VLLM_WORKER_MULTIPROC_METHOD=spawn
++ export PYTHONUNBUFFERED=1
++ PYTHONUNBUFFERED=1
++ export VLLM_USE_FLASHINFER_SAMPLER=1
++ VLLM_USE_FLASHINFER_SAMPLER=1
++ args=(--model_root "$MODEL_ROOT" --out_root "$OUT_ROOT" --prompt_type "$PROMPT_TYPE" --max_tokens_per_call "$MAX_TOKENS" --nproc "$NUM_GPUS" --base_root "$BASE_ROOT" --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 "$TEMP_G1" --temperature_g2 "$TEMP_G2" --n_sampling_g1 "$NSAMP_G1" --n_sampling_g2 "$NSAMP_G2" --cleanup_exported)
++ '[' false = true ']'
++ echo '[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_DeepSeek-1.5B --out_root /uge_mnt/home/caixq/project/noisy-RLVR/new_eval_noise_rlvr_DeepSeek-1.5B_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported'
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_DeepSeek-1.5B --out_root /uge_mnt/home/caixq/project/noisy-RLVR/new_eval_noise_rlvr_DeepSeek-1.5B_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /data/giil/caixq/ckpts/noise_rlvr_DeepSeek-1.5B --out_root /uge_mnt/home/caixq/project/noisy-RLVR/new_eval_noise_rlvr_DeepSeek-1.5B_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 8 --n_sampling_g2 8 --cleanup_exported
+INFO 09-25 13:24:47 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-25 13:24:51] [INFO] --cleanup_exported 已忽略，导出目录将保留在 /data/giil/caixq/export
+[2025-09-25 13:24:51] 发现 10 个 run。先检查缺失指标，再确保导出模型存在并提交评测任务。
+[2025-09-25 13:24:51] ⏭ 跳过 base-only：DeepSeek-R1-Distill-Qwen-1.5B（g1/g2 已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：C_llm_verifier_grpo_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：D_rb_online_rho1_algo2_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：D_rb_online_rho1_algo2_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:51] ⏭ 跳过：D_rb_online_rho1_algo2_DeepSeek-R1-Distill-Qwen-1.5B__global_step_300（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:52] ⏭ 跳过：D_rb_online_rho1_algo2_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:52] ⏭ 跳过：E_rb_rule_addon_tinyv_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:52] ⏭ 跳过：E_rb_rule_addon_tinyv_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:52] ⏭ 跳过：E_rb_rule_addon_tinyv_DeepSeek-R1-Distill-Qwen-1.5B__global_step_313（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:52] ⏭ 跳过：rb_manual_algo1_est_DeepSeek-R1-Distill-Qwen-1.5B__global_step_100（g1/g2 全部已有 metrics）
+[2025-09-25 13:24:52] ⏭ 跳过：rb_manual_algo1_est_DeepSeek-R1-Distill-Qwen-1.5B__global_step_200（g1/g2 全部已有 metrics）
+INFO 09-25 13:24:56 [__init__.py:239] Automatically detected platform cuda.
+[2025-09-25 13:25:00] ▶ 加载模型（一次）：/data/giil/caixq/export/rb_manual_algo1_est_DeepSeek-R1-Distill-Qwen-1.5B/global_step_313
+INFO 09-25 13:25:17 [config.py:717] This model supports multiple tasks: {'reward', 'score', 'embed', 'generate', 'classify'}. Defaulting to 'generate'.
+INFO 09-25 13:25:17 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 09-25 13:25:17 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+INFO 09-25 13:25:23 [__init__.py:239] Automatically detected platform cuda.
+INFO 09-25 13:25:28 [core.py:58] Initializing a V1 LLM engine (v0.8.5.post1) with config: model='/data/giil/caixq/export/rb_manual_algo1_est_DeepSeek-R1-Distill-Qwen-1.5B/global_step_313', speculative_config=None, tokenizer='/data/giil/caixq/export/rb_manual_algo1_est_DeepSeek-R1-Distill-Qwen-1.5B/global_step_313', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=131072, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto,  device_config=cuda, decoding_config=DecodingConfig(guided_decoding_backend='auto', reasoning_backend=None), observability_config=ObservabilityConfig(show_hidden_metrics=False, otlp_traces_endpoint=None, collect_model_forward_time=False, collect_model_execute_time=False), seed=None, served_model_name=/data/giil/caixq/export/rb_manual_algo1_est_DeepSeek-R1-Distill-Qwen-1.5B/global_step_313, num_scheduler_steps=1, multi_step_stream_outputs=True, enable_prefix_caching=True, chunked_prefill_enabled=True, use_async_output_proc=False, disable_mm_preprocessor_cache=False, mm_processor_kwargs=None, pooler_config=None, compilation_config={"splitting_ops":[],"compile_sizes":[],"cudagraph_capture_sizes":[],"max_capture_size":0}
+WARNING 09-25 13:25:28 [utils.py:2522] Methods determine_num_available_blocks,device_config,get_cache_block_size_bytes,initialize_cache not implemented in <vllm.v1.worker.gpu_worker.Worker object at 0x7f05084b6200>
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 570, in <module>
+    main()
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 553, in main
+    result = result_queue.get()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/queues.py", line 103, in get
+    res = self._recv_bytes()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 221, in recv_bytes
+    buf = self._recv_bytes(maxlength)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 419, in _recv_bytes
+    buf = self._recv(4)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 384, in _recv
+    chunk = read(handle, remaining)
+KeyboardInterrupt
+Exception ignored in atexit callback: <function _exit_function at 0x7f543550e710>
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/util.py", line 357, in _exit_function
+    p.join()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 149, in join
+    res = self._popen.wait(timeout)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/popen_fork.py", line 43, in wait
+    return self.poll(os.WNOHANG if timeout == 0.0 else 0)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/popen_fork.py", line 27, in poll
+    pid, sts = os.waitpid(self.pid, flag)
+KeyboardInterrupt: 
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 398, in __init__
+    self._wait_for_engine_startup()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 423, in _wait_for_engine_startup
+    events = poller.poll(STARTUP_POLL_PERIOD_MS)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/zmq/sugar/poll.py", line 106, in poll
+    return zmq_poll(self.sockets, timeout=timeout)
+  File "zmq/backend/cython/_zmq.py", line 1665, in zmq.backend.cython._zmq.zmq_poll
+  File "zmq/backend/cython/_zmq.py", line 176, in zmq.backend.cython._zmq._check_rc
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 315, in _bootstrap
+    self.run()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 335, in _worker_loop
+    _execute_with_timeout(payload, timeout)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 352, in _execute_with_timeout
+    _execute_payload(payload)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 255, in _execute_payload
+    run_groups_with_shared_llm(
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 186, in run_groups_with_shared_llm
+    llm, tokenizer = load_llm_and_tokenizer(model_dir, use_vllm, pipeline_parallel_size)
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 139, in load_llm_and_tokenizer
+    llm = LLM(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/utils.py", line 1161, in inner
+    return fn(*args, **kwargs)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/entrypoints/llm.py", line 247, in __init__
+    self.llm_engine = LLMEngine.from_engine_args(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/engine/llm_engine.py", line 510, in from_engine_args
+    return engine_cls.from_vllm_config(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/llm_engine.py", line 112, in from_vllm_config
+    return cls(vllm_config=vllm_config,
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/llm_engine.py", line 92, in __init__
+    self.engine_core = EngineCoreClient.make_client(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 73, in make_client
+    return SyncMPClient(vllm_config, executor_class, log_stats)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 494, in __init__
+    super().__init__(
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 410, in __init__
+    self._finalizer()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/weakref.py", line 591, in __call__
+    return info.func(*info.args, **(info.kwargs or {}))
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 319, in __call__
+    core_engine.close()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/engine/core_client.py", line 295, in close
+    proc_handle.shutdown()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/utils.py", line 128, in shutdown
+    self._finalizer()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/weakref.py", line 591, in __call__
+    return info.func(*info.args, **(info.kwargs or {}))
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/vllm/v1/utils.py", line 137, in shutdown
+    proc.join(5)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 149, in join
+    res = self._popen.wait(timeout)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/popen_fork.py", line 40, in wait
+    if not wait([self.sentinel], timeout):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/connection.py", line 936, in wait
+    ready = selector.select(timeout)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/selectors.py", line 416, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 318, in _bootstrap
+    util._exit_function()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/util.py", line 357, in _exit_function
+    p.join()
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/process.py", line 149, in join
+    res = self._popen.wait(timeout)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/popen_fork.py", line 43, in wait
+    return self.poll(os.WNOHANG if timeout == 0.0 else 0)
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/multiprocessing/popen_fork.py", line 27, in poll
+    pid, sts = os.waitpid(self.pid, flag)
+KeyboardInterrupt

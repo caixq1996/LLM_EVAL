@@ -1,0 +1,32 @@
++ TEMP_G1=0.6
++ TEMP_G2=0.0
++ NSAMP_G1=2
++ NSAMP_G2=2
++ export EVAL_ONE_MODEL_TIMEOUT=21600
++ EVAL_ONE_MODEL_TIMEOUT=21600
++ export PASS_AT_KS=1,2
++ PASS_AT_KS=1,2
++ export TORCH_CPP_LOG_LEVEL=ERROR
++ TORCH_CPP_LOG_LEVEL=ERROR
+++ seq -s, 0 0
++ export CUDA_VISIBLE_DEVICES=0
++ CUDA_VISIBLE_DEVICES=0
++ export VLLM_WORKER_MULTIPROC_METHOD=spawn
++ VLLM_WORKER_MULTIPROC_METHOD=spawn
++ export PYTHONUNBUFFERED=1
++ PYTHONUNBUFFERED=1
++ args=(--model_root "$MODEL_ROOT" --out_root "$OUT_ROOT" --prompt_type "$PROMPT_TYPE" --max_tokens_per_call "$MAX_TOKENS" --nproc "$NUM_GPUS" --base_root "$BASE_ROOT" --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 "$TEMP_G1" --temperature_g2 "$TEMP_G2" --n_sampling_g1 "$NSAMP_G1" --n_sampling_g2 "$NSAMP_G2")
++ echo '[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/noisy-RLVR/checkpoints/noise_rlvr_128batchsize_deepscaler_v2 --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_qwen_test_v6 --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 2 --n_sampling_g2 2'
+[INFO] Running: /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/noisy-RLVR/checkpoints/noise_rlvr_128batchsize_deepscaler_v2 --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_qwen_test_v6 --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 2 --n_sampling_g2 2
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/noisy-RLVR/checkpoints/noise_rlvr_128batchsize_deepscaler_v2 --out_root /uge_mnt/home/caixq/project/noisy-RLVR/eval_qwen_test_v6 --prompt_type think-boxed --max_tokens_per_call 3072 --nproc 1 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 2 --n_sampling_g2 2
+INFO 09-16 17:04:19 [__init__.py:239] Automatically detected platform cuda.
+Traceback (most recent call last):
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 427, in <module>
+    main()
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 347, in main
+    runs = sorted([p for p in args.model_root.iterdir() if p.is_dir()])
+  File "/uge_mnt/home/caixq/project/Qwen2.5-Eval-v3/evaluation/tools/run_qwen_eval_all_shared.py", line 347, in <listcomp>
+    runs = sorted([p for p in args.model_root.iterdir() if p.is_dir()])
+  File "/uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/pathlib.py", line 1015, in iterdir
+    for name in self._accessor.listdir(self):
+FileNotFoundError: [Errno 2] No such file or directory: '/uge_mnt/home/caixq/project/noisy-RLVR/checkpoints/noise_rlvr_128batchsize_deepscaler_v2'
