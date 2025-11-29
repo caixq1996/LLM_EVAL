@@ -29,7 +29,7 @@ except Exception:
     AutoTokenizer = None
 
 GROUP_DATASETS = ('aime25x8,amc23x8,aime24x8', 'minerva_math,olympiadbench,math500')
-EXPORT_ROOT = Path('/data/giil/caixq/export').resolve()
+EXPORT_ROOT = (Path(os.getenv("WORK_HOME", "/data/giil/caixq")) / "export").resolve()
 
 def _safe_rmtree(p: Path):
     """Robust rm -rf for readonly files on POSIX/Windows."""
