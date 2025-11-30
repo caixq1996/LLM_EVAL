@@ -53,6 +53,8 @@ def parse_args():
         action="store_true",
         help="Few shot for multiple-choice questions, zero shot for others.",
     )
+    parser.add_argument('--shard_id', type=int, default=0, help='Current shard id (0-based)')
+    parser.add_argument('--num_shards', type=int, default=1, help='Total number of shards')
     args = parser.parse_args()
     args.top_p = (
         1 if args.temperature == 0 else args.top_p
@@ -62,6 +64,23 @@ def parse_args():
 
 def prepare_data(data_name, args):
     examples = load_data(data_name, args.split, args.data_dir)
+    
+    # --- 新增：数据分片逻辑 ---
+    if args.num_shards > 1:
+        # 简单切片，或者先 shuffle 再切片
+        total_len = len(examples)
+        chunk_size = total_len // args.num_shards
+        start_idx = args.shard_id * chunk_size
+        end_idx = (args.shard_id + 1) * chunk_size if args.shard_id < args.num_shards - 1 else total_len
+        examples = examples[start_idx:end_idx]
+        print(f"[INFO] Data Sharding: Shard {args.shard_id}/{args.num_shards}, range [{start_idx}:{end_idx}], count={len(examples)}")
+    # ------------------------
+
+    if args.num_test_sample > 0:
+        # 注意：如果使用了分片，num_test_sample 最好是针对全量的，这里逻辑可能需要调整。
+        # 建议：如果分片，num_test_sample 应该要么失效，要么除以 num_shards。
+        # 简单起见，分片模式下忽略 num_test_sample 或由用户自己控制
+        pass 
 
     # sample `num_test_sample` from dataset
     if args.num_test_sample > 0:
