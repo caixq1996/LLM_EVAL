@@ -1,5 +1,11 @@
-# [Full Code] File: miyabi_multi_eval.sh
 #!/bin/bash
+#PBS -q regular-g
+#PBS -l select=8
+#PBS -l walltime=08:00:00
+#PBS -W group_list=gq50
+#PBS -j oe
+#PBS -N opra_multi_eval
+#PBS -o ./miyabi_logs/opra_multi_eval.log
 
 set -e
 # set -x 
@@ -19,10 +25,10 @@ EVAL_DIR="${ROOT_DIR}"
 
 EXP_NAME="${EXP_NAME:-OPRA-LoRA}" 
 MODEL_ROOT="${MODEL_ROOT:-$ROOT_DIR/checkpoints/${EXP_NAME}}"
-OUT_ROOT="${OUT_ROOT:-$ROOT_DIR/eval_results/${EXP_NAME}}"
 BASE_ROOT="${BASE_ROOT:-$WORK_HOME/model}"
 
 PROMPT_TYPE="${PROMPT_TYPE:-qwen25-math-cot}"
+OUT_ROOT="${OUT_ROOT:-$ROOT_DIR/eval_results/${EXP_NAME}_${PROMPT_TYPE}}"
 MAX_TOKENS="${MAX_TOKENS:-4096}"
 NUM_GPUS_PER_NODE=1 
 MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-128}"
