@@ -1,0 +1,74 @@
+INFO 11-30 18:15:10 [__init__.py:239] Automatically detected platform cuda.
+[2025-11-30 18:16:02] 发现 2 个 run。
+[2025-11-30 18:16:02] ⏭ 跳过 base-only：Qwen2.5-math-1.5B
+INFO 11-30 18:16:08 [__init__.py:239] Automatically detected platform cuda.
+[2025-11-30 18:16:13] ▶ 加载模型（一次）：/data/giil/caixq/export/Qwen2.5-math-1.5B_opra/global_step_100
+INFO 11-30 18:16:38 [config.py:717] This model supports multiple tasks: {'score', 'generate', 'reward', 'embed', 'classify'}. Defaulting to 'generate'.
+INFO 11-30 18:16:38 [config.py:2003] Chunked prefill is enabled with max_num_batched_tokens=8192.
+WARNING 11-30 18:16:38 [cuda.py:93] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+INFO 11-30 18:16:48 [__init__.py:239] Automatically detected platform cuda.
+INFO 11-30 18:16:53 [core.py:58] Initializing a V1 LLM engine (v0.8.5.post1) with config: model='/data/giil/caixq/export/Qwen2.5-math-1.5B_opra/global_step_100', speculative_config=None, tokenizer='/data/giil/caixq/export/Qwen2.5-math-1.5B_opra/global_step_100', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto,  device_config=cuda, decoding_config=DecodingConfig(guided_decoding_backend='auto', reasoning_backend=None), observability_config=ObservabilityConfig(show_hidden_metrics=False, otlp_traces_endpoint=None, collect_model_forward_time=False, collect_model_execute_time=False), seed=None, served_model_name=/data/giil/caixq/export/Qwen2.5-math-1.5B_opra/global_step_100, num_scheduler_steps=1, multi_step_stream_outputs=True, enable_prefix_caching=True, chunked_prefill_enabled=True, use_async_output_proc=False, disable_mm_preprocessor_cache=False, mm_processor_kwargs=None, pooler_config=None, compilation_config={"splitting_ops":[],"compile_sizes":[],"cudagraph_capture_sizes":[],"max_capture_size":0}
+WARNING 11-30 18:17:02 [utils.py:2522] Methods determine_num_available_blocks,device_config,get_cache_block_size_bytes,initialize_cache not implemented in <vllm.v1.worker.gpu_worker.Worker object at 0x7f143d186590>
+INFO 11-30 18:17:29 [parallel_state.py:1004] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, TP rank 0
+INFO 11-30 18:17:29 [cuda.py:221] Using Flash Attention backend on V1 engine.
+INFO 11-30 18:17:29 [topk_topp_sampler.py:59] Using FlashInfer for top-p & top-k sampling.
+INFO 11-30 18:17:29 [gpu_model_runner.py:1329] Starting to load model /data/giil/caixq/export/Qwen2.5-math-1.5B_opra/global_step_100...
+Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:01<00:00,  1.08s/it]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:01<00:00,  1.08s/it]
+
+INFO 11-30 18:17:30 [loader.py:458] Loading weights took 1.38 seconds
+INFO 11-30 18:17:30 [gpu_model_runner.py:1347] Model loading took 2.8798 GiB and 1.488925 seconds
+INFO 11-30 18:17:31 [kv_cache_utils.py:634] GPU KV cache size: 1,249,104 tokens
+INFO 11-30 18:17:31 [kv_cache_utils.py:637] Maximum concurrency for 4,096 tokens per request: 304.96x
+INFO 11-30 18:17:31 [core.py:159] init engine (profile, create kv cache, warmup model) took 0.61 seconds
+INFO 11-30 18:17:31 [core_client.py:439] Core engine process 0 ready.
+[2025-11-30 18:17:31] ℹ️  当前工作节点分片: 3/4
+[2025-11-30 18:17:31] ✓ 模型就绪，开始评测 Qwen2.5-math-1.5B_opra__global_step_100（共享同一 LLM，仅补缺数据集）
+[2025-11-30 18:17:31] ▶ Qwen2.5-math-1.5B_opra__global_step_100/g1  待评测=['aime24x8']  T=0.6  n=128
+Qwen2.5-math-1.5B_opra__global_step_100/g1:   0%|          | 0/1 [00:00<?, ?ds/s][Info] Sharding enabled: Process 3/4 handling range [180:240]
+==================================================
+data: aime24x8  ,remain samples: 60
+{'idx': 180, 'id': 60, 'problem': 'Every morning Aya goes for a $9$-kilometer-long walk and stops at a coffee shop afterwards. When she walks at a constant speed of $s$ kilometers per hour, the walk takes her 4 hours, including $t$ minutes spent in the coffee shop. When she walks $s+2$ kilometers per hour, the walk takes her 2 hours and 24 minutes, including $t$ minutes spent in the coffee shop. Suppose Aya walks at $s+\\frac{1}{2}$ kilometers per hour. Find the number of minutes the walk takes her, including the $t$ minutes spent in the coffee shop.', 'solution': '$\\frac{9}{s} + t = 4$ in hours and $\\frac{9}{s+2} + t = 2.4$ in hours.\nSubtracting the second equation from the first, we get, \n$\\frac{9}{s} - \\frac{9}{s+2} = 1.6$\nMultiplying by $(s)(s+2)$, we get \n$9s+18-9s=18=1.6s^{2} + 3.2s$\nMultiplying by 5/2 on both sides, we get\n$0 = 4s^{2} + 8s - 45$\nFactoring gives us \n$(2s-5)(2s+9) = 0$, of which the solution we want is $s=2.5$.\nSubstituting this back to the first equation, we can find that $t = 0.4$ hours.\nLastly, $s + \\frac{1}{2} = 3$ kilometers per hour, so\n$\\frac{9}{3} + 0.4 = 3.4$ hours, or $\\framebox{204}$ minutes\n-Failure.net\nThe amount of hours spent while walking on the first travel is $\\frac{240-t}{6}$. Thus, we have the equation $(240-t)(s) = 540$, and by the same logic, the second equation yields $(144-t)(s+2) = 540$. We have $240s-st = 540$, and $288+144s-2t-st = 540$. We subtract the two equations to get $96s+2t-288 = 0$, so we have $48s+t = 144$, so $t = 144-48s$, and now we have $(96+48s)(s) = 540$. The numerator of $s$ must evenly divide 540, however, $s$ must be less than 3. We can guess that $s = 2.5$. Now, $2.5+0.5 = 3$. Taking $\\frac{9}{3} = 3$, we find that it will take three hours for the 9 kilometers to be traveled. The t minutes spent at the coffeeshop can be written as $144-48(2.5)$, so t = 24. $180 + 24 = 204$. -sepehr2010', 'answer': '204', 'url': 'https://artofproblemsolving.com/wiki/index.php/2024_AIME_I_Problems/Problem_1', 'question': 'Every morning Aya goes for a $9$-kilometer-long walk and stops at a coffee shop afterwards. When she walks at a constant speed of $s$ kilometers per hour, the walk takes her 4 hours, including $t$ minutes spent in the coffee shop. When she walks $s+2$ kilometers per hour, the walk takes her 2 hours and 24 minutes, including $t$ minutes spent in the coffee shop. Suppose Aya walks at $s+\\frac{1}{2}$ kilometers per hour. Find the number of minutes the walk takes her, including the $t$ minutes spent in the coffee shop.'}
+
+  0%|          | 0/60 [00:00<?, ?it/s][A
+ 58%|█████▊    | 35/60 [00:00<00:00, 343.06it/s][A100%|██████████| 60/60 [00:00<00:00, 384.99it/s]
+-------------------- Epoch 0
+
+Processed prompts:   0%|          | 0/7680 [00:00<?, ?it/s, est. speed input: 0.00 toks/s, output: 0.00 toks/s][A
+Processed prompts:   0%|          | 2/7680 [00:01<1:43:31,  1.24it/s, est. speed input: 207.66 toks/s, output: 155.12 toks/s][A
+Processed prompts:   0%|          | 3/7680 [00:05<4:15:56,  2.00s/it, est. speed input: 95.34 toks/s, output: 134.12 toks/s] [A
+Processed prompts:   0%|          | 4/7680 [00:06<3:35:36,  1.69s/it, est. speed input: 104.31 toks/s, output: 191.24 toks/s][Aterminate called after throwing an instance of 'c10::Error'
+  what():  Trying to free a pointer not allocated here
+Exception raised from raw_delete at /pytorch/torch/csrc/cuda/CUDAPluggableAllocator.cpp:151 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7f162556c1b6 in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7f1625515b3f in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #2: torch::cuda::CUDAPluggableAllocator::CUDAPluggableAllocator::raw_delete(void*) + 0x1a7 (0x7f15d608e667 in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: <unknown function> + 0x22b78 (0x7f162596bb78 in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libc10_cuda.so)
+frame #4: <unknown function> + 0x2320e (0x7f162596c20e in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libc10_cuda.so)
+frame #5: <unknown function> + 0x39afa (0x7f1625982afa in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libc10_cuda.so)
+frame #6: c10::cuda::MemPool::~MemPool() + 0x1b9 (0x7f162596e329 in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libc10_cuda.so)
+frame #7: <unknown function> + 0xdf74f0 (0x7f161d6864f0 in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #8: <unknown function> + 0x516907 (0x7f161cda5907 in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #9: <unknown function> + 0x5174d1 (0x7f161cda64d1 in /uge_mnt/home/caixq/miniconda3/envs/eval/lib/python3.10/site-packages/torch/lib/libtorch_python.so)
+frame #10: <unknown function> + 0x1acc04 (0x5569c57dec04 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #11: <unknown function> + 0x1392a2 (0x5569c576b2a2 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #12: <unknown function> + 0x139bbb (0x5569c576bbbb in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #13: <unknown function> + 0x139c83 (0x5569c576bc83 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #14: <unknown function> + 0x1acb85 (0x5569c57deb85 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #15: <unknown function> + 0x218c3c (0x5569c584ac3c in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #16: <unknown function> + 0x21bf1b (0x5569c584df1b in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #17: <unknown function> + 0x13ac98 (0x5569c576cc98 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #18: <unknown function> + 0x279c30 (0x5569c58abc30 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #19: <unknown function> + 0x29f407 (0x5569c58d1407 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #20: Py_FinalizeEx + 0x134 (0x5569c58d1634 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #21: Py_Exit + 0x8 (0x5569c58d1718 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #22: <unknown function> + 0x29f75b (0x5569c58d175b in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #23: PyErr_PrintEx + 0x12 (0x5569c58d1972 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #24: PyRun_SimpleStringFlags + 0x50 (0x5569c58d7f60 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #25: Py_RunMain + 0x26c (0x5569c58d81ec in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #26: Py_BytesMain + 0x39 (0x5569c58d8469 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+frame #27: <unknown function> + 0x29d90 (0x7f1626467d90 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #28: __libc_start_main + 0x80 (0x7f1626467e40 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #29: <unknown function> + 0x2112d1 (0x5569c58432d1 in /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3)
+

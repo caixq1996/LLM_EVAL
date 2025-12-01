@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
 try:
     from torch.distributed._tensor.api import DTensor, Shard, Replicate
 except Exception:
@@ -75,6 +76,48 @@ def export_one_step_to_hf(step_dir, base_model_dir, export_root):
                 return out_dir
         except Exception:
             pass  # Re-export if metadata missing/corrupted
+
+    adapter_dir = actor / 'lora_adapter'
+    adapter_file = adapter_dir / 'adapter_model.safetensors'
+    has_adapter = adapter_file.exists()
+
+    # 如果存在 LoRA adapter，优先在 base 模型上加载并 merge，避免 FSDP 权重前缀不匹配导致权重丢失
+    if has_adapter:
+        model = AutoModelForCausalLM.from_pretrained(str(base_model_dir), trust_remote_code=True)
+        try:
+            model = PeftModel.from_pretrained(model, str(adapter_dir), is_trainable=False)
+            model = model.merge_and_unload()
+        except Exception as e:
+            raise RuntimeError(f'Load/merge LoRA adapter failed: {adapter_dir} -> {e}')
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(str(out_dir), safe_serialization=True)
+
+        tok_src = adapter_dir / 'huggingface'
+        try:
+            tok = AutoTokenizer.from_pretrained(
+                str(tok_src if tok_src.exists() else base_model_dir),
+                trust_remote_code=True, use_fast=True
+            )
+            tok.save_pretrained(str(out_dir))
+            jinja = tok_src / 'chat_template.jinja'
+            if jinja.exists():
+                shutil.copy2(jinja, out_dir / 'chat_template.jinja')
+        except Exception as e:
+            print(f'[WARN] tokenizer export failed, fallback to base tokenizer. err={e}')
+            tok = AutoTokenizer.from_pretrained(str(base_model_dir), trust_remote_code=True, use_fast=True)
+            tok.save_pretrained(str(out_dir))
+
+        meta = {
+            'source': str(step_dir),
+            'base_model': str(base_model_dir),
+            'world_size': None,
+            'num_shards': None,
+            'export_type': 'base_plus_lora_adapter',
+            'adapter_dir': str(adapter_dir),
+        }
+        (out_dir / 'export_meta.json').write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding='utf-8')
+        return out_dir
 
     shard_candidates = sorted(actor.glob('model_world_size_*_rank_*.pt'), key=_rank_id)
     if not shard_candidates:

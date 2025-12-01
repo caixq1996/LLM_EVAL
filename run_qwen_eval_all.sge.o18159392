@@ -1,0 +1,119 @@
++ PROJECT_NAME=OPRA
++ EXP_NAMES=OPRA-LoRA
++ BASE_ROOT=/hss/giil/caixq/model
++ PROMPT_TYPE=think-boxed
++ MAX_TOKENS=3072
++ [[ -z '' ]]
++ command -v nvidia-smi
+++ nvidia-smi --list-gpus
+++ grep -c '^GPU'
++ NUM_GPUS=8
++ [[ 8 -ge 1 ]]
++ PYTHON_BIN=/uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3
++ OUT_ROOT=/uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed
++ MODEL_ROOT=/uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA
++ MAX_SAMPLE_NUMS=128
++ SKIP_BASE_EVAL=false
++ export TZ=JST-9
++ TZ=JST-9
++ mkdir -p eval_log
+++ date +%Y%m%d_%H%M%S
++ TS=20251201_142814
++ echo '[INFO] Job started at 20251201_142814. Detected 8 GPUs.'
+[INFO] Job started at 20251201_142814. Detected 8 GPUs.
++ TEMP_G1=0.6
++ TEMP_G2=0.0
++ NSAMP_G1=128
++ NSAMP_G2=128
++ export EVAL_ONE_MODEL_TIMEOUT=21600
++ EVAL_ONE_MODEL_TIMEOUT=21600
++ export PASS_AT_KS=1,8,16,32,64,128
++ PASS_AT_KS=1,8,16,32,64,128
++ export TORCH_CPP_LOG_LEVEL=ERROR
++ TORCH_CPP_LOG_LEVEL=ERROR
++ export VLLM_WORKER_MULTIPROC_METHOD=spawn
++ VLLM_WORKER_MULTIPROC_METHOD=spawn
++ export PYTHONUNBUFFERED=1
++ PYTHONUNBUFFERED=1
++ export VLLM_USE_FLASHINFER_SAMPLER=1
++ VLLM_USE_FLASHINFER_SAMPLER=1
++ base_args=(--model_root "$MODEL_ROOT" --out_root "$OUT_ROOT" --prompt_type "$PROMPT_TYPE" --max_tokens_per_call "$MAX_TOKENS" --base_root "$BASE_ROOT" --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 "$TEMP_G1" --temperature_g2 "$TEMP_G2" --n_sampling_g1 "$NSAMP_G1" --n_sampling_g2 "$NSAMP_G2")
++ '[' false = true ']'
++ pids=()
++ (( i=0 ))
++ (( i<NUM_GPUS ))
++ LOG_FILE=eval_log/qwen-eval.20251201_142814.rank_0.log
++ echo '[INFO] Starting Worker 0/8 on GPU 0... Log: eval_log/qwen-eval.20251201_142814.rank_0.log'
+[INFO] Starting Worker 0/8 on GPU 0... Log: eval_log/qwen-eval.20251201_142814.rank_0.log
++ pids+=($!)
++ sleep 10
++ CUDA_VISIBLE_DEVICES=0
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --nproc 1 --shard_id 0 --num_shards 8
++ (( i++ ))
++ (( i<NUM_GPUS ))
++ LOG_FILE=eval_log/qwen-eval.20251201_142814.rank_1.log
++ echo '[INFO] Starting Worker 1/8 on GPU 1... Log: eval_log/qwen-eval.20251201_142814.rank_1.log'
+[INFO] Starting Worker 1/8 on GPU 1... Log: eval_log/qwen-eval.20251201_142814.rank_1.log
++ pids+=($!)
++ sleep 10
++ CUDA_VISIBLE_DEVICES=1
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --nproc 1 --shard_id 1 --num_shards 8
++ (( i++ ))
++ (( i<NUM_GPUS ))
++ LOG_FILE=eval_log/qwen-eval.20251201_142814.rank_2.log
++ echo '[INFO] Starting Worker 2/8 on GPU 2... Log: eval_log/qwen-eval.20251201_142814.rank_2.log'
+[INFO] Starting Worker 2/8 on GPU 2... Log: eval_log/qwen-eval.20251201_142814.rank_2.log
++ pids+=($!)
++ sleep 10
++ CUDA_VISIBLE_DEVICES=2
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --nproc 1 --shard_id 2 --num_shards 8
++ (( i++ ))
++ (( i<NUM_GPUS ))
++ LOG_FILE=eval_log/qwen-eval.20251201_142814.rank_3.log
++ echo '[INFO] Starting Worker 3/8 on GPU 3... Log: eval_log/qwen-eval.20251201_142814.rank_3.log'
+[INFO] Starting Worker 3/8 on GPU 3... Log: eval_log/qwen-eval.20251201_142814.rank_3.log
++ pids+=($!)
++ sleep 10
++ CUDA_VISIBLE_DEVICES=3
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --nproc 1 --shard_id 3 --num_shards 8
++ (( i++ ))
++ (( i<NUM_GPUS ))
++ LOG_FILE=eval_log/qwen-eval.20251201_142814.rank_4.log
++ echo '[INFO] Starting Worker 4/8 on GPU 4... Log: eval_log/qwen-eval.20251201_142814.rank_4.log'
+[INFO] Starting Worker 4/8 on GPU 4... Log: eval_log/qwen-eval.20251201_142814.rank_4.log
++ pids+=($!)
++ sleep 10
++ CUDA_VISIBLE_DEVICES=4
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --nproc 1 --shard_id 4 --num_shards 8
++ (( i++ ))
++ (( i<NUM_GPUS ))
++ LOG_FILE=eval_log/qwen-eval.20251201_142814.rank_5.log
++ echo '[INFO] Starting Worker 5/8 on GPU 5... Log: eval_log/qwen-eval.20251201_142814.rank_5.log'
+[INFO] Starting Worker 5/8 on GPU 5... Log: eval_log/qwen-eval.20251201_142814.rank_5.log
++ pids+=($!)
++ sleep 10
++ CUDA_VISIBLE_DEVICES=5
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --nproc 1 --shard_id 5 --num_shards 8
++ (( i++ ))
++ (( i<NUM_GPUS ))
++ LOG_FILE=eval_log/qwen-eval.20251201_142814.rank_6.log
++ echo '[INFO] Starting Worker 6/8 on GPU 6... Log: eval_log/qwen-eval.20251201_142814.rank_6.log'
+[INFO] Starting Worker 6/8 on GPU 6... Log: eval_log/qwen-eval.20251201_142814.rank_6.log
++ pids+=($!)
++ sleep 10
++ CUDA_VISIBLE_DEVICES=6
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --nproc 1 --shard_id 6 --num_shards 8
++ (( i++ ))
++ (( i<NUM_GPUS ))
++ LOG_FILE=eval_log/qwen-eval.20251201_142814.rank_7.log
++ echo '[INFO] Starting Worker 7/8 on GPU 7... Log: eval_log/qwen-eval.20251201_142814.rank_7.log'
+[INFO] Starting Worker 7/8 on GPU 7... Log: eval_log/qwen-eval.20251201_142814.rank_7.log
++ pids+=($!)
++ sleep 10
++ CUDA_VISIBLE_DEVICES=7
++ /uge_mnt/home/caixq/miniconda3/envs/eval/bin/python3 -u tools/run_qwen_eval_all_shared.py --model_root /uge_mnt/home/caixq/project/OPRA/checkpoints/OPRA-LoRA --out_root /uge_mnt/home/caixq/project/OPRA/new_eval_OPRA-LoRA_think-boxed --prompt_type think-boxed --max_tokens_per_call 3072 --base_root /hss/giil/caixq/model --use_vllm --pipeline_parallel_size 1 --vllm_batch_size 0 --temperature_g1 0.6 --temperature_g2 0.0 --n_sampling_g1 128 --n_sampling_g2 128 --nproc 1 --shard_id 7 --num_shards 8
++ (( i++ ))
++ (( i<NUM_GPUS ))
++ echo '[INFO] All workers started. Waiting for completion...'
+[INFO] All workers started. Waiting for completion...
++ wait

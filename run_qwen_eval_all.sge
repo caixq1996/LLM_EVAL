@@ -5,7 +5,7 @@
 #$ -ac d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=256g
 #$ -j y
 set -x
-# set -e # 生产运行建议关闭，避免日志过多
+# set -e 
 
 PROJECT_NAME="OPRA"
 EXP_NAMES="${EXP_NAMES:-OPRA-LoRA}"
@@ -26,14 +26,13 @@ fi
 PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
 OUT_ROOT="${OUT_ROOT:-$HOME/project/${PROJECT_NAME}/new_eval_${EXP_NAMES}_${PROMPT_TYPE}}"
 MODEL_ROOT="${MODEL_ROOT:-$HOME/project/${PROJECT_NAME}/checkpoints/${EXP_NAMES}}"
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-128}"
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-32}"
 SKIP_BASE_EVAL="${SKIP_BASE_EVAL:-false}"
 
 export TZ='JST-9'
 mkdir -p eval_log
 TS="$(date +%Y%m%d_%H%M%S)"
 
-# 注意：这里不再将所有输出重定向到同一个文件，而是让每个 GPU 进程写自己的日志
 echo "[INFO] Job started at ${TS}. Detected ${NUM_GPUS} GPUs."
 
 TEMP_G1="${TEMP_G1:-0.6}"
@@ -42,7 +41,17 @@ NSAMP_G1="${NSAMP_G1:-${MAX_SAMPLE_NUMS}}"
 NSAMP_G2="${NSAMP_G2:-${MAX_SAMPLE_NUMS}}"
 
 export EVAL_ONE_MODEL_TIMEOUT="${EVAL_ONE_MODEL_TIMEOUT:-21600}"
-export PASS_AT_KS="${PASS_AT_KS:-1,${MAX_SAMPLE_NUMS}}"
+if [[ -z "${PASS_AT_KS:-}" ]]; then
+  default_pass_ks=(1 8 16 32 64 128 256)
+  pass_ks=()
+  for k in "${default_pass_ks[@]}"; do
+    if (( k > 0 && k <= MAX_SAMPLE_NUMS )) && [[ " ${pass_ks[*]} " != *" $k "* ]]; then
+      pass_ks+=("$k")
+    fi
+  done
+  PASS_AT_KS=$(IFS=,; echo "${pass_ks[*]}")
+fi
+export PASS_AT_KS
 export TORCH_CPP_LOG_LEVEL=ERROR
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export PYTHONUNBUFFERED=1
@@ -62,9 +71,8 @@ base_args=(
   --temperature_g2 "$TEMP_G2"
   --n_sampling_g1 "$NSAMP_G1"
   --n_sampling_g2 "$NSAMP_G2"
-  # 注意：单节点多进程并行时，建议去掉 --cleanup_exported
-  # 因为进程A可能正在用模型，进程B评测完把它删了会导致报错
-  # --cleanup_exported 
+  # 注意：必须去掉 --cleanup_exported，防止进程间删除模型冲突
+  # 清理工作可以留给 merge 步骤或最后统一清理
 )
 
 if [ "$SKIP_BASE_EVAL" = "true" ]; then
@@ -78,16 +86,9 @@ fi
 pids=()
 
 for ((i=0; i<NUM_GPUS; i++)); do
-    # 为每个进程分配独立的日志文件
     LOG_FILE="eval_log/qwen-eval.${TS}.rank_${i}.log"
     
     echo "[INFO] Starting Worker $i/$NUM_GPUS on GPU $i... Log: $LOG_FILE"
-    
-    # 构造当前进程的命令
-    # 关键修改：
-    # 1. CUDA_VISIBLE_DEVICES=$i : 隔离显卡
-    # 2. --nproc 1 : 本地进程只管理 1 张卡
-    # 3. --shard_id $i --num_shards $NUM_GPUS : 开启数据切片
     
     CUDA_VISIBLE_DEVICES=$i "$PYTHON_BIN" -u tools/run_qwen_eval_all_shared.py \
       "${base_args[@]}" \
@@ -97,8 +98,6 @@ for ((i=0; i<NUM_GPUS; i++)); do
       > "$LOG_FILE" 2>&1 &
       
     pids+=($!)
-    
-    # 稍微错开启动时间，避免多个进程同时尝试导出同一个 FSDP 模型导致文件竞争
     sleep 10 
 done
 
@@ -109,4 +108,26 @@ done
 echo "[INFO] All workers started. Waiting for completion..."
 wait
 
-echo "[INFO] Done at $(date). All workers finished."
+# =======================================================
+# 4. 合并结果 (Merge Shards)
+# =======================================================
+
+echo "[INFO] Tasks completed. Starting merge process..."
+
+# 合并 Base 结果
+if [ "$SKIP_BASE_EVAL" != "true" ]; then
+    BASE_NAME=$(basename "$BASE_ROOT")
+    echo "[INFO] Merging results for base model..."
+    "$PYTHON_BIN" tools/merge_results.py --out_root "$OUT_ROOT" --run_name "base__${BASE_NAME}" --prompt_type "$PROMPT_TYPE"
+fi
+
+# 合并 Checkpoint 结果
+for RUN_DIR in "$OUT_ROOT"/"$EXP_NAMES"__global_step_*; do
+    if [ -d "$RUN_DIR" ]; then
+        RUN_NAME=$(basename "$RUN_DIR")
+        echo "[INFO] Merging results for $RUN_NAME..."
+        "$PYTHON_BIN" tools/merge_results.py --out_root "$OUT_ROOT" --run_name "$RUN_NAME" --prompt_type "$PROMPT_TYPE"
+    fi
+done
+
+echo "[INFO] Done at $(date). All workers finished and results merged."

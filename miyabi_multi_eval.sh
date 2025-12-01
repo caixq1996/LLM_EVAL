@@ -1,3 +1,4 @@
+# [Full Code] File: miyabi_multi_eval.sh
 #!/bin/bash
 
 set -e
@@ -65,14 +66,10 @@ cat << EOF > "${WRAPPER_SCRIPT}"
 # --- 1. Environment Setup (Miyabi Specific - NO MODULE LOAD) ---
 export TZ="Asia/Tokyo"
 
-# [Fix] 移除 module load，直接使用硬编码路径
+# [Fix] 硬编码路径
 export CUDA_HOME="/work/opt/local/aarch64/cores/cuda/12.8.1"
 export CUDA_ROOT="\${CUDA_HOME}"
-
-# 强制将 CUDA bin 加入 PATH (放在最前面)
 export PATH="\${CUDA_HOME}/bin:\${PATH}"
-
-# 设置库路径
 export CUDA_LIB_PATH="\${CUDA_HOME}/targets/sbsa-linux/lib"
 export LD_LIBRARY_PATH="\${CUDA_LIB_PATH}:${WORK_HOME}/miniconda3/envs/eval/lib:\${LD_LIBRARY_PATH}"
 
@@ -86,7 +83,17 @@ export RAY_TMPDIR=/tmp/ray
 mkdir -p \$RAY_TMPDIR
 
 export PYTHONPATH="${ROOT_DIR}:${EVAL_DIR}:\${PYTHONPATH}"
-export PASS_AT_KS="${PASS_AT_KS:-1}"
+if [[ -z "${PASS_AT_KS:-}" ]]; then
+  default_pass_ks=(1 8 16 32 64 128 256)
+  pass_ks=()
+  for k in "${default_pass_ks[@]}"; do
+    if (( k > 0 && k <= MAX_SAMPLE_NUMS )) && [[ " ${pass_ks[*]} " != *" $k "* ]]; then
+      pass_ks+=("$k")
+    fi
+  done
+  PASS_AT_KS=$(IFS=,; echo "${pass_ks[*]}")
+fi
+export PASS_AT_KS
 export TORCH_CPP_LOG_LEVEL=ERROR
 export CUDA_VISIBLE_DEVICES="0"
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
@@ -167,7 +174,37 @@ else
 fi
 
 EXIT_CODE=$?
+
+# ======================================================================
+# 5. 合并结果 (Merge Shards)
+# ======================================================================
+
 if [ $EXIT_CODE -eq 0 ]; then
+    echo "[INFO] Tasks completed. Starting merge process..." | tee -a "$LOG_FILE"
+    
+    # 获取 Python 路径 (本地)
+    source "${WORK_HOME}/miniconda3/bin/activate" eval
+    PYTHON="${WORK_HOME}/miniconda3/envs/eval/bin/python"
+    
+    # 合并 Base 结果
+    if [ "$SKIP_BASE_EVAL" != "true" ]; then
+        BASE_NAME=$(basename "$BASE_ROOT")
+        echo "[INFO] Merging results for base model..." | tee -a "$LOG_FILE"
+        $PYTHON tools/merge_results.py --out_root "$OUT_ROOT" --run_name "base__${BASE_NAME}" --prompt_type "$PROMPT_TYPE" >> "$LOG_FILE" 2>&1
+    fi
+    
+    # 合并 Checkpoint 结果
+    # 注意：这里需要遍历所有 global_step 目录
+    # 假设 run_qwen_eval_all_shared.py 中的 run_name 格式为 EXP_NAME__global_step_XXX
+    # 我们这里简单粗暴地遍历 OUT_ROOT 下的所有 run
+    for RUN_DIR in "$OUT_ROOT"/"$EXP_NAME"__global_step_*; do
+        if [ -d "$RUN_DIR" ]; then
+            RUN_NAME=$(basename "$RUN_DIR")
+            echo "[INFO] Merging results for $RUN_NAME..." | tee -a "$LOG_FILE"
+            $PYTHON tools/merge_results.py --out_root "$OUT_ROOT" --run_name "$RUN_NAME" --prompt_type "$PROMPT_TYPE" >> "$LOG_FILE" 2>&1
+        fi
+    done
+    
     echo "[INFO] Evaluation finished successfully." | tee -a "$LOG_FILE"
 else
     echo "[ERROR] Evaluation failed with code $EXIT_CODE. Check log above." | tee -a "$LOG_FILE"
