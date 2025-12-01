@@ -134,7 +134,7 @@ def load_llm_and_tokenizer(model_dir, use_vllm, pipeline_parallel_size):
         llm = LLM(
             model=str(model_dir),
             tensor_parallel_size=tp,
-            gpu_memory_utilization=0.95,
+            gpu_memory_utilization=0.9,
             enable_chunked_prefill=True,
             enable_sleep_mode=True,
             enforce_eager=True,

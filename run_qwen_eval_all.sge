@@ -24,7 +24,7 @@ if [[ -z "${NUM_GPUS:-}" ]]; then
 fi
 
 PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
-OUT_ROOT="${OUT_ROOT:-$HOME/project/${PROJECT_NAME}/new_eval_${EXP_NAMES}_${PROMPT_TYPE}}"
+OUT_ROOT="${OUT_ROOT:-$HOME/project/${PROJECT_NAME}/eval_results/${EXP_NAMES}_${PROMPT_TYPE}}"
 MODEL_ROOT="${MODEL_ROOT:-$HOME/project/${PROJECT_NAME}/checkpoints/${EXP_NAMES}}"
 MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-32}"
 SKIP_BASE_EVAL="${SKIP_BASE_EVAL:-false}"
