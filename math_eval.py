@@ -105,7 +105,7 @@ def prepare_data(data_name, args):
 def setup(args):
     available_gpus = os.environ['CUDA_VISIBLE_DEVICES'].split(',')
     if args.use_vllm:
-        llm = LLM(model=args.model_name_or_path, tensor_parallel_size=len(available_gpus) // args.pipeline_parallel_size, gpu_memory_utilization=0.98, pipeline_parallel_size=args.pipeline_parallel_size, trust_remote_code=True)
+        llm = LLM(model=args.model_name_or_path, tensor_parallel_size=len(available_gpus) // args.pipeline_parallel_size, gpu_memory_utilization=0.9, pipeline_parallel_size=args.pipeline_parallel_size, trust_remote_code=True)
         tokenizer = None
         if args.apply_chat_template:
             tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True)
