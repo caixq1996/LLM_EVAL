@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from tqdm import tqdm
 import shutil, stat
 import gc
+import subprocess
 
 THIS_FILE = Path(__file__).resolve()
 THIS_DIR = THIS_FILE.parent
@@ -307,19 +308,54 @@ def _worker_loop(task_queue, result_queue, cuda_devices, extra_env=None):
     if cuda_devices:
         os.environ['CUDA_VISIBLE_DEVICES'] = cuda_devices
     else:
-        os.environ.pop('CUDA_VISIBLE_DEVICES', None)
+        # If not specified, inheriting current env or clearing it might be safer depending on setup
+        # But usually we want to keep what was passed or set in main
+        pass
     if extra_env:
         os.environ.update({k: str(v) for k, v in extra_env.items()})
+    # Path to this script to run as subprocess
+    script_path = str(THIS_FILE)
     while True:
         payload = task_queue.get()
         if payload is None:
             break
+
         run_name = payload.get('run_name', 'unknown')
         timeout = payload.pop('_timeout', None)
+        
+        # Serialize payload to pass to subprocess
+        payload_json = json.dumps(payload)
+
+        # Construct command: python tools/run_qwen_eval_all_shared.py --_one_model_worker --_worker_payload "..."
+        cmd = [
+            sys.executable, 
+            script_path, 
+            '--_one_model_worker', 
+            '--_worker_payload', payload_json
+        ]
+
         try:
-            _execute_with_timeout(payload, timeout)
+            # We use subprocess.run to isolate the vLLM lifecycle.
+            # timeout parameter in subprocess.run handles the per-model timeout.
+            # capture_output=False lets stdout/stderr flow to the main log.
+            subprocess.run(
+                cmd, 
+                env=os.environ, 
+                check=True, 
+                timeout=timeout
+            )
             result_queue.put({'run_name': run_name, 'status': 'ok'})
+            
+        except subprocess.TimeoutExpired:
+            print(f"[{_now()}] [TIMEOUT] Worker subprocess timed out for {run_name}", flush=True)
+            result_queue.put({'run_name': run_name, 'status': 'error', 'error': 'Timeout'})
+            
+        except subprocess.CalledProcessError as e:
+            print(f"[{_now()}] [ERROR] Worker subprocess failed for {run_name} with exit code {e.returncode}", flush=True)
+            result_queue.put({'run_name': run_name, 'status': 'error', 'error': f'Exit code {e.returncode}'})
+            
         except Exception as exc:
+            print(f"[{_now()}] [ERROR] Unexpected exception in worker loop for {run_name}: {exc}", flush=True)
             result_queue.put({'run_name': run_name, 'status': 'error', 'error': repr(exc)})
 
 def _execute_with_timeout(payload, timeout):
