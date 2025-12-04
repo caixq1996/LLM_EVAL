@@ -1,0 +1,33 @@
+INFO 12-03 17:12:42 [__init__.py:239] Automatically detected platform cuda.
+[2025-12-03 17:13:58] 发现 7 个 run。
+[2025-12-03 17:13:58] ⏭ 跳过 base-only：Llama-3.2-3B-Instruct
+[2025-12-03 17:13:58] ⏭ 跳过：A_rb_oracle_grpo_Llama-3.2-3B-Instruct__global_step_100
+[2025-12-03 17:13:58] ⏭ 跳过：A_rb_oracle_grpo_Llama-3.2-3B-Instruct__global_step_200
+[2025-12-03 17:13:58] ⏭ 跳过：A_rb_oracle_grpo_Llama-3.2-3B-Instruct__global_step_300
+[2025-12-03 17:13:58] ⏭ 跳过：A_rb_oracle_grpo_Llama-3.2-3B-Instruct__global_step_313
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_Llama-3.2-3B-Instruct__global_step_100
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_Llama-3.2-3B-Instruct__global_step_200
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_Llama-3.2-3B-Instruct__global_step_300
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_algo1_est_r00.10_r10.20_est0.10_0.20_Llama-3.2-3B-Instruct__global_step_313
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_Llama-3.2-3B-Instruct__global_step_100
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_Llama-3.2-3B-Instruct__global_step_200
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_Llama-3.2-3B-Instruct__global_step_300
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_algo2_est_r00.10_r10.20_est0.10_0.20_Llama-3.2-3B-Instruct__global_step_313
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_Llama-3.2-3B-Instruct__global_step_100
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_Llama-3.2-3B-Instruct__global_step_200
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_Llama-3.2-3B-Instruct__global_step_300
+[2025-12-03 17:13:58] ⏭ 跳过：B_rb_manual_grpo_r00.10_r10.20_Llama-3.2-3B-Instruct__global_step_313
+[2025-12-03 17:13:58] ⏭ 跳过：C_llm_verifier_grpo_Llama-3.2-3B-Instruct__global_step_100
+[2025-12-03 17:13:58] ⏭ 跳过：C_llm_verifier_grpo_Llama-3.2-3B-Instruct__global_step_200
+[2025-12-03 17:13:58] ⏭ 跳过：C_llm_verifier_grpo_Llama-3.2-3B-Instruct__global_step_300
+[2025-12-03 17:13:58] ⏭ 跳过：C_llm_verifier_grpo_Llama-3.2-3B-Instruct__global_step_313
+[2025-12-03 17:13:58] ⏭ 跳过：D_rb_online_rho1_algo2_Llama-3.2-3B-Instruct__global_step_100
+[2025-12-03 17:13:58] ⏭ 跳过：D_rb_online_rho1_algo2_Llama-3.2-3B-Instruct__global_step_200
+[2025-12-03 17:13:58] ⏭ 跳过：D_rb_online_rho1_algo2_Llama-3.2-3B-Instruct__global_step_300
+[2025-12-03 17:13:58] ⏭ 跳过：D_rb_online_rho1_algo2_Llama-3.2-3B-Instruct__global_step_313
+[2025-12-03 17:13:58] ⏭ 跳过：E_rb_rule_addon_tinyv_Llama-3.2-3B-Instruct__global_step_100
+[2025-12-03 17:13:58] ⏭ 跳过：E_rb_rule_addon_tinyv_Llama-3.2-3B-Instruct__global_step_200
+[2025-12-03 17:13:58] ⏭ 跳过：E_rb_rule_addon_tinyv_Llama-3.2-3B-Instruct__global_step_300
+[2025-12-03 17:13:58] ⏭ 跳过：E_rb_rule_addon_tinyv_Llama-3.2-3B-Instruct__global_step_313
+INFO 12-03 17:14:04 [__init__.py:239] Automatically detected platform cuda.
+[2025-12-03 17:14:25] ✅ 全部评测完成。输出目录：/uge_mnt/home/caixq/project/noisy-RLVR/eval_results/noise_rlvr_1_5b_128batchsize_deepscaler_v2_think-boxed

@@ -4,12 +4,16 @@
 #$ -jc gtn-container_g8.24h
 #$ -ac d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=256g
 #$ -j y
-set -x
-# set -e 
 
-PROJECT_NAME="OPRA"
-EXP_NAMES="${EXP_NAMES:-OPRA-LoRA}"
+set -x
+# set -e   # 如果希望有 worker 挂掉就整 job 失败，可以打开
+
+PROJECT_NAME="noisy-RLVR"
+EXP_NAMES="${EXP_NAMES:-noise_rlvr_1_5b_128batchsize_deepscaler_v2}"
+
+# 这里是 base 模型所在的「根目录」，里面有很多模型子目录
 BASE_ROOT="${BASE_ROOT:-/hss/giil/caixq/model}"
+
 PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
 MAX_TOKENS="${MAX_TOKENS:-3072}"
 
@@ -24,9 +28,14 @@ if [[ -z "${NUM_GPUS:-}" ]]; then
 fi
 
 PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
+
 OUT_ROOT="${OUT_ROOT:-$HOME/project/${PROJECT_NAME}/eval_results/${EXP_NAMES}_${PROMPT_TYPE}}"
-MODEL_ROOT="${MODEL_ROOT:-$HOME/project/${PROJECT_NAME}/checkpoints/${EXP_NAMES}}"
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-32}"
+
+# MODEL_ROOT 应该是「这一堆 checkpoint 的根目录」，下面有多个 run 目录
+# 例如: /data/.../ckpts/noise_rlvr_llama-3.2-3B-Instruct/<run_name>/global_step_xxx
+MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/noise_rlvr_llama-3.2-3B-Instruct}"
+
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
 SKIP_BASE_EVAL="${SKIP_BASE_EVAL:-false}"
 
 export TZ='JST-9'
@@ -41,6 +50,8 @@ NSAMP_G1="${NSAMP_G1:-${MAX_SAMPLE_NUMS}}"
 NSAMP_G2="${NSAMP_G2:-${MAX_SAMPLE_NUMS}}"
 
 export EVAL_ONE_MODEL_TIMEOUT="${EVAL_ONE_MODEL_TIMEOUT:-21600}"
+
+# PASS@k 列表（受 MAX_SAMPLE_NUMS 限制）
 if [[ -z "${PASS_AT_KS:-}" ]]; then
   default_pass_ks=(1 8 16 32 64 128 256)
   pass_ks=()
@@ -52,12 +63,16 @@ if [[ -z "${PASS_AT_KS:-}" ]]; then
   PASS_AT_KS=$(IFS=,; echo "${pass_ks[*]}")
 fi
 export PASS_AT_KS
+
 export TORCH_CPP_LOG_LEVEL=ERROR
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export PYTHONUNBUFFERED=1
 export VLLM_USE_FLASHINFER_SAMPLER=1
 
-# 基础参数数组
+# =======================================================
+# 2. 评测：单机多卡 -> 多进程，每个进程 1 GPU + 1 shard
+# =======================================================
+
 base_args=(
   --model_root "$MODEL_ROOT"
   --out_root "$OUT_ROOT"
@@ -71,63 +86,83 @@ base_args=(
   --temperature_g2 "$TEMP_G2"
   --n_sampling_g1 "$NSAMP_G1"
   --n_sampling_g2 "$NSAMP_G2"
-  # 注意：必须去掉 --cleanup_exported，防止进程间删除模型冲突
-  # 清理工作可以留给 merge 步骤或最后统一清理
+  # 这里不要加 --cleanup_exported，避免多个 shard 抢着删模型
 )
 
 if [ "$SKIP_BASE_EVAL" = "true" ]; then
   base_args+=( --skip_base_eval )
 fi
 
-# =======================================================
-# 2. 多进程启动逻辑 (Data Parallelism)
-# =======================================================
-
 pids=()
 
 for ((i=0; i<NUM_GPUS; i++)); do
     LOG_FILE="eval_log/qwen-eval.${TS}.rank_${i}.log"
-    
     echo "[INFO] Starting Worker $i/$NUM_GPUS on GPU $i... Log: $LOG_FILE"
-    
+
     CUDA_VISIBLE_DEVICES=$i "$PYTHON_BIN" -u tools/run_qwen_eval_all_shared.py \
       "${base_args[@]}" \
       --nproc 1 \
       --shard_id "$i" \
       --num_shards "$NUM_GPUS" \
       > "$LOG_FILE" 2>&1 &
-      
-    pids+=($!)
-    sleep 10 
-done
 
-# =======================================================
-# 3. 等待所有任务完成
-# =======================================================
+    pids+=($!)
+    sleep 10
+done
 
 echo "[INFO] All workers started. Waiting for completion..."
 wait
 
+echo "[INFO] All eval workers finished."
+
 # =======================================================
-# 4. 合并结果 (Merge Shards)
+# 3. 合并结果 (Merge Shards)
 # =======================================================
 
 echo "[INFO] Tasks completed. Starting merge process..."
 
-# 合并 Base 结果
+cd "$PWD"  # 确保还在 repo 根目录（有 tools/merge_results.py）
+
+# ---------- 3.1 合并 base__* 结果 ----------
 if [ "$SKIP_BASE_EVAL" != "true" ]; then
-    BASE_NAME=$(basename "$BASE_ROOT")
-    echo "[INFO] Merging results for base model..."
-    "$PYTHON_BIN" tools/merge_results.py --out_root "$OUT_ROOT" --run_name "base__${BASE_NAME}" --prompt_type "$PROMPT_TYPE"
+    # 不再用 BASE_ROOT 的 basename，而是直接扫 OUT_ROOT 下的 base__*
+    BASE_RUN_DIRS=$(ls -d "$OUT_ROOT"/base__* 2>/dev/null || true)
+
+    if [ -n "$BASE_RUN_DIRS" ]; then
+        for RUN_DIR in $BASE_RUN_DIRS; do
+            if [ -d "$RUN_DIR" ]; then
+                RUN_NAME=$(basename "$RUN_DIR")
+                echo "[INFO] Merging results for base run: $RUN_NAME ..."
+                "$PYTHON_BIN" tools/merge_results.py \
+                  --out_root "$OUT_ROOT" \
+                  --run_name "$RUN_NAME" \
+                  --prompt_type "$PROMPT_TYPE"
+            fi
+        done
+    else
+        echo "[WARN] No base__* run directories found under $OUT_ROOT, skip base merge."
+    fi
 fi
 
-# 合并 Checkpoint 结果
-for RUN_DIR in "$OUT_ROOT"/"$EXP_NAMES"__global_step_*; do
-    if [ -d "$RUN_DIR" ]; then
-        RUN_NAME=$(basename "$RUN_DIR")
-        echo "[INFO] Merging results for $RUN_NAME..."
-        "$PYTHON_BIN" tools/merge_results.py --out_root "$OUT_ROOT" --run_name "$RUN_NAME" --prompt_type "$PROMPT_TYPE"
-    fi
-done
+# ---------- 3.2 合并各个 checkpoint 结果 ----------
+# eval 脚本会在 $OUT_ROOT 下创建若干:
+#   <run_name>__global_step_XXX
+# 这里不再依赖 EXP_NAMES，直接扫所有 *__global_step_* 更稳
+CKPT_RUN_DIRS=$(ls -d "$OUT_ROOT"/*__global_step_* 2>/dev/null || true)
+
+if [ -n "$CKPT_RUN_DIRS" ]; then
+    for RUN_DIR in $CKPT_RUN_DIRS; do
+        if [ -d "$RUN_DIR" ]; then
+            RUN_NAME=$(basename "$RUN_DIR")
+            echo "[INFO] Merging results for checkpoint run: $RUN_NAME ..."
+            "$PYTHON_BIN" tools/merge_results.py \
+              --out_root "$OUT_ROOT" \
+              --run_name "$RUN_NAME" \
+              --prompt_type "$PROMPT_TYPE"
+        fi
+    done
+else
+    echo "[WARN] No *__global_step_* run directories found under $OUT_ROOT, nothing to merge."
+fi
 
 echo "[INFO] Done at $(date). All workers finished and results merged."
