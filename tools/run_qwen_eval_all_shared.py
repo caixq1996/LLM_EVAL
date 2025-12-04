@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from tqdm import tqdm
 import shutil, stat
+import gc
 
 THIS_FILE = Path(__file__).resolve()
 THIS_DIR = THIS_FILE.parent
@@ -134,7 +135,7 @@ def load_llm_and_tokenizer(model_dir, use_vllm, pipeline_parallel_size):
         llm = LLM(
             model=str(model_dir),
             tensor_parallel_size=tp,
-            gpu_memory_utilization=0.9,
+            gpu_memory_utilization=0.85,
             enable_chunked_prefill=True,
             enable_sleep_mode=True,
             enforce_eager=True,
@@ -179,6 +180,9 @@ def run_groups_with_shared_llm(
         missing = check_missing_by_group(out_root=out_root, run_name=run_name)
 
     print(f'[{_now()}] ▶ 加载模型（一次）：{model_dir}', flush=True)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        gc.collect()
     llm, tokenizer = load_llm_and_tokenizer(model_dir, use_vllm, pipeline_parallel_size)
 
     # 打印分片信息
