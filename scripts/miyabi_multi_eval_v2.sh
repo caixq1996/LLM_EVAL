@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -q regular-g
-#PBS -l select=256
+#PBS -l select=64
 #PBS -l walltime=08:00:00
 #PBS -W group_list=gq50
 #PBS -N opra_multi_eval
