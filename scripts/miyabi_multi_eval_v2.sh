@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -q regular-g
-#PBS -l select=8
+#PBS -l select=256
 #PBS -l walltime=08:00:00
 #PBS -W group_list=gq50
 #PBS -N opra_multi_eval
@@ -49,11 +49,11 @@ EXP_NAME="${EXP_NAME:-OPRA-LoRA}"
 MODEL_ROOT="${MODEL_ROOT:-${ROOT_DIR}/checkpoints/${EXP_NAME}}"
 BASE_ROOT="${BASE_ROOT:-${WORK_HOME}/model}"
 PROMPT_TYPE="${PROMPT_TYPE:-qwen25-math-cot}"
-OUT_ROOT="${OUT_ROOT:-${ROOT_DIR}/eval_results/${EXP_NAME}_${PROMPT_TYPE}}"
+OUT_ROOT="${OUT_ROOT:-${ROOT_DIR}/eval_results/${EXP_NAME}_${PROMPT_TYPE}_v2}"
 MAX_TOKENS="${MAX_TOKENS:-4096}"
 
 NUM_GPUS_PER_NODE=1
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-128}"
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-1024}"
 SKIP_BASE_EVAL="${SKIP_BASE_EVAL:-false}"
 TEMP_G1="${TEMP_G1:-0.6}"
 TEMP_G2="${TEMP_G2:-0.0}"
@@ -115,7 +115,7 @@ export PYTHONPATH="${ROOT_DIR}:${EVAL_DIR}:\${PYTHONPATH}"
 
 # ---------- Pass@k ----------
 if [[ -z "\${PASS_AT_KS:-}" ]]; then
-  default_pass_ks=(1 8 16 32 64 128 256)
+  default_pass_ks=(1 8 16 32 64 128 256 512 1024 2048 4096)
   pass_ks=()
   for k in "\${default_pass_ks[@]}"; do
     if (( k > 0 && k <= ${MAX_SAMPLE_NUMS} )) && [[ " \${pass_ks[*]} " != *" \$k "* ]]; then

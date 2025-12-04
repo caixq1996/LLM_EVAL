@@ -6,9 +6,20 @@ EXP_NAMES="${EXP_NAMES:-noise_rlvr_1_5b_128batchsize_deepscaler_v2}"
 PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
 OUT_ROOT="${OUT_ROOT:-$HOME/project/${PROJECT_NAME}/eval_results/${EXP_NAMES}_${PROMPT_TYPE}}"
 PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
 
-# 如果你需要计算 Pass@K，请设置这个环境变量
-export PASS_AT_KS="1,4,8,16" 
+# PASS@k 列表（受 MAX_SAMPLE_NUMS 限制）
+if [[ -z "${PASS_AT_KS:-}" ]]; then
+  default_pass_ks=(1 8 16 32 64 128 256)
+  pass_ks=()
+  for k in "${default_pass_ks[@]}"; do
+    if (( k > 0 && k <= MAX_SAMPLE_NUMS )) && [[ " ${pass_ks[*]} " != *" $k "* ]]; then
+      pass_ks+=("$k")
+    fi
+  done
+  PASS_AT_KS=$(IFS=,; echo "${pass_ks[*]}")
+fi
+export PASS_AT_KS
 
 echo "[INFO] Starting manual merge process for root: $OUT_ROOT"
 
