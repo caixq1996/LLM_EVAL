@@ -33,7 +33,7 @@ OUT_ROOT="${OUT_ROOT:-$HOME/project/${PROJECT_NAME}/eval_results/${EXP_NAMES}_${
 
 # MODEL_ROOT 应该是「这一堆 checkpoint 的根目录」，下面有多个 run 目录
 # 例如: /data/.../ckpts/noise_rlvr_llama-3.2-3B-Instruct/<run_name>/global_step_xxx
-MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/noise_rlvr_llama-3.2-3B-Instruct}"
+MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/noise_rlvr_1_5b_128batchsize_deepscaler_v2}"
 
 MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
 SKIP_BASE_EVAL="${SKIP_BASE_EVAL:-false}"

@@ -101,13 +101,20 @@ def parse_args():
 
 # -------------------------- Utilities --------------------------------
 
-# Patterns to infer base model segment from run name (reused idea, simplified)
+# UPDATED: Added (?:-instruct|-chat|-it)? to patterns to capture common suffixes
 _BASE_PATTERNS = [
-    r'qwen3(?:[.\-]\d+)?(?:-math)?(?:-[\d.]+b)?', r'qwen2[.\-]?5(?:-math)?(?:-[\d.]+b)?', r'qwen1[.\-]?5(?:-math)?(?:-[\d.]+b)?',
-    r'llama-?3(?:[.\-]\d+)?(?:-[\d.]+b)?', r'deepseek(?:-r1(?:-distill)?(?:-qwen)?(?:-[\d.]+b)?)?', r'internlm(?:-math)?(?:-[\d.]+b)?',
-    r'mathstral(?:-[\d.]+b)?', r'mistral(?:-[\d.]+b)?', r'gemma(?:-[\d.]+b)?', r'phi-?\d(?:-[\d.]+b)?'
+    r'qwen3(?:[.\-]\d+)?(?:-math)?(?:-[\d.]+b)?(?:-instruct|-chat)?', 
+    r'qwen2[.\-]?5(?:-math)?(?:-[\d.]+b)?(?:-instruct|-chat)?', 
+    r'qwen1[.\-]?5(?:-math)?(?:-[\d.]+b)?(?:-instruct|-chat)?',
+    r'llama-?3(?:[.\-]\d+)?(?:-[\d.]+b)?(?:-instruct|-chat)?', 
+    r'deepseek(?:-r1(?:-distill)?(?:-qwen)?(?:-[\d.]+b)?)?', 
+    r'internlm(?:-math)?(?:-[\d.]+b)?',
+    r'mathstral(?:-[\d.]+b)?', 
+    r'mistral(?:-[\d.]+b)?(?:-instruct)?', 
+    r'gemma(?:-[\d.]+b)?(?:-it)?', 
+    r'phi-?\d(?:-[\d.]+b)?',
 ]
-_FALLBACK_KEYS = ['qwen3', 'qwen2.5', 'qwen25', 'qwen1.5', 'llama3', 'llama', 'deepseek', 'internlm', 'mathstral', 'mistral', 'gemma', 'phi']
+_FALLBACK_KEYS = ['qwen3', 'qwen2.5', 'qwen25', 'qwen1.5', 'llama-3', 'llama', 'deepseek', 'internlm', 'mathstral', 'mistral', 'gemma', 'phi']
 
 
 _STEP_RE = re.compile(r'__global_step_(\d+)$', re.IGNORECASE)
@@ -118,36 +125,47 @@ def _strip_seps(s: str) -> str:
     s = re.sub(r'\s{2,}', ' ', s).strip()
     return s
 
-_STEP_RE = re.compile(r'__global_step_(\d+)$', re.IGNORECASE)
-
 def infer_base_and_algo(run_name: str) -> Tuple[str, str]:
-    """Heuristic split: [base token] + [the rest] => (base_display, algo_name).
-    Example: 'qwen25-math-1_5b-noise_rlvr__global_step_5000' -> ('qwen25-math-1_5b', 'noise_rlvr__global_step_5000')
-    """
+    """Heuristic split: [base token] + [the rest] => (base_display, algo_name)."""
     s = run_name
     s_lower = s.lower()
     matches = []
     for pat in _BASE_PATTERNS:
         for m in re.finditer(pat, s_lower):
             matches.append(m.span())
+    
     if matches:
         # choose longest span
         (i, j) = max(matches, key=lambda x: x[1] - x[0])
+        # Expand match to cover case-sensitive string
         base_display = s[i:j]
+        # Hack: if the match ends prematurely but next char is '-' and followed by 'instruct', extend it
+        # This handles cases where regex might not fully capture weird casing
+        rest = s[j:]
+        if re.match(r'^[-_]instruct', rest, re.IGNORECASE):
+             base_display += rest[:re.match(r'^[-_]instruct', rest, re.IGNORECASE).end()]
     else:
         key = next((k for k in _FALLBACK_KEYS if k in s_lower), None)
         base_display = s[s_lower.find(key): s_lower.find(key) + len(key)] if key else 'unknown'
-    algo_name = re.sub(re.escape(base_display), '', s, flags=re.IGNORECASE)
-    algo_name = _strip_seps(algo_name)
-    if not algo_name:
-        algo_name = 'base'
+
+    # Remove base from string to get algo
     algo_raw = re.sub(re.escape(base_display), '', s, flags=re.IGNORECASE)
-    # ⚠️ 先在“原始未清洗”的串上剥 step
+    
+    # Remove Step info
     m = _STEP_RE.search(algo_raw)
     if m:
         algo_raw = _STEP_RE.sub('', algo_raw)
-    # 再做归一化清洗
-    algo_name = _strip_seps(algo_raw) or 'base'
+    
+    algo_name = _strip_seps(algo_raw)
+    
+    # CRITICAL FIX: If folder started with 'base__', force algo to be 'base'
+    # irrespective of leftover suffixes (like 'instruct') that regex missed.
+    if s_lower.startswith('base__'):
+        algo_name = 'base'
+        
+    if not algo_name:
+        algo_name = 'base'
+        
     return (base_display, algo_name)
 
 
@@ -195,11 +213,9 @@ def load_results(out_roots: Sequence[Path]) -> pd.DataFrame:
                         continue
                     (base_display, algo_raw) = infer_base_and_algo(run)
                     (algo_label, step) = split_algo_and_step(algo_raw)
-                    step = None  # 如果真要保留 step，可在 infer 里一并返回
+                    
                     # extract metrics of interest
-                    # normalize: allowed metrics are acc, total_acc, and pass@K
                     pass_at = m.get('pass_at_k_percent') or {}
-                    # flat set of metrics present
                     metrics_found = {
                         'acc': m.get('acc', np.nan),
                         'total_acc': m.get('total_acc', np.nan),
@@ -238,13 +254,6 @@ def reduce_steps(
     prefer_best: List[str] | None = None,
     prefer_mean: List[str] | None = None,
 ) -> pd.DataFrame:
-    """
-    折叠同一 (base, algo, dataset, metric) 的多 step：
-      - 命中 prefer_mean -> 取 mean
-      - 否则命中 prefer_best -> 取 max
-      - 其他 -> 取 min
-    返回不含 step 的 DataFrame。
-    """
     if df_raw.empty:
         return df_raw
 
@@ -369,8 +378,8 @@ def pivot_for_base_metric(df: pd.DataFrame, base: str, metric: str) -> pd.DataFr
 def _paper_rc(dpi: int = 200):
     plt.rcParams.update({
         'figure.dpi': dpi, 'savefig.dpi': dpi,
-        'font.size': 11, 'axes.titlesize': 12, 'axes.labelsize': 11,
-        'legend.fontsize': 9, 'xtick.labelsize': 10, 'ytick.labelsize': 10,
+        'font.size': 18, 'axes.titlesize': 16, 'axes.labelsize': 16,
+        'legend.fontsize': 12, 'xtick.labelsize': 16, 'ytick.labelsize': 16,
         'axes.grid': True, 'grid.linestyle': '--', 'grid.alpha': 0.35,
         'figure.autolayout': True,
     })
@@ -455,7 +464,7 @@ def plot_grouped_bars(
     ax.set_ylabel('Score (%)')
     # ax.set_title(title)
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.legend(ncols=2, frameon=False, fontsize=9)
+    ax.legend(ncols=2, frameon=False, fontsize=12)
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(f'{out_prefix}.png')
     fig.savefig(f'{out_prefix}.pdf')

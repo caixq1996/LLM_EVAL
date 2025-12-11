@@ -12,6 +12,14 @@ from tqdm import tqdm
 import shutil, stat
 import gc
 import subprocess
+import torch
+try:
+    from vllm.distributed.parallel_state import destroy_model_parallel
+except ImportError:
+    try:
+        from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
+    except ImportError:
+        destroy_model_parallel = None
 
 THIS_FILE = Path(__file__).resolve()
 THIS_DIR = THIS_FILE.parent
@@ -153,7 +161,6 @@ def load_llm_and_tokenizer(model_dir, use_vllm, pipeline_parallel_size):
         )
     return (llm, tokenizer)
 
-import torch
 import time
 
 # [FIX] 增加分片参数
@@ -237,6 +244,25 @@ def run_groups_with_shared_llm(
                     pbar.update(1)
 
     print(f'[{_now()}] ✅ 完成：{run_name}（g1+g2 缺失数据集已补全）', flush=True)
+    if use_vllm:
+        print(f'[{_now()}] 🧹 正在显式释放 vLLM 资源...', flush=True)
+        # 1. 删除 LLM 对象，触发析构
+        del llm
+        
+        # 2. 强制垃圾回收
+        gc.collect()
+        
+        # 3. 销毁分布式进程组（关键步骤）
+        if destroy_model_parallel is not None:
+            try:
+                destroy_model_parallel()
+            except Exception as e:
+                print(f"[WARN] destroy_model_parallel 失败: {e}")
+        
+        # 4. 清理 CUDA 缓存
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
 
 def _execute_payload(payload, exit_on_done=False):
     if isinstance(payload.get('missing'), dict):
