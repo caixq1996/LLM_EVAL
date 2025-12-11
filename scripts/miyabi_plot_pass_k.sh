@@ -22,7 +22,7 @@ PROMPT_TYPE="${PROMPT_TYPE:-qwen25-math-cot}"
 EVAL_HOME="${WORK_HOME}/project/LLM_EVAL"
 
 # 数据源路径
-OUT_ROOT="${WORK_HOME}/project/${PROJECT_NAME}/eval_results/${EXP_NAME}_${PROMPT_TYPE}"
+OUT_ROOT="${WORK_HOME}/project/${PROJECT_NAME}/eval_results/${EXP_NAME}_${PROMPT_TYPE}_v2"
 # 输出路径
 PLOT_DIR="${OUT_ROOT}/plots_visualization"
 
@@ -31,9 +31,9 @@ PLOT_DIR="${OUT_ROOT}/plots_visualization"
 # "k"    : 画 最佳 Score 随 Pass@k 变化的图 (横轴 k)
 # "all"  : 两种都画
 PLOT_MODE="${PLOT_MODE:-k}"
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-128}"
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-1024}"
 if [[ -z "${PASS_AT_KS:-}" ]]; then
-  default_pass_ks=(1 8 16 32 64 128 256)
+  default_pass_ks=(1 8 16 32 64 128 256 512 1024)
   pass_ks=()
   for k in "${default_pass_ks[@]}"; do
     if (( k > 0 && k <= MAX_SAMPLE_NUMS )) && [[ " ${pass_ks[*]} " != *" $k "* ]]; then
