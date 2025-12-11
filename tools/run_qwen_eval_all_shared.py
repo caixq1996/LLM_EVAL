@@ -13,6 +13,7 @@ import shutil, stat
 import gc
 import subprocess
 import torch
+import time
 try:
     from vllm.distributed.parallel_state import destroy_model_parallel
 except ImportError:
@@ -246,23 +247,46 @@ def run_groups_with_shared_llm(
     print(f'[{_now()}] ✅ 完成：{run_name}（g1+g2 缺失数据集已补全）', flush=True)
     if use_vllm:
         print(f'[{_now()}] 🧹 正在显式释放 vLLM 资源...', flush=True)
-        # 1. 删除 LLM 对象，触发析构
-        del llm
-        
-        # 2. 强制垃圾回收
-        gc.collect()
-        
-        # 3. 销毁分布式进程组（关键步骤）
-        if destroy_model_parallel is not None:
-            try:
-                destroy_model_parallel()
-            except Exception as e:
-                print(f"[WARN] destroy_model_parallel 失败: {e}")
-        
-        # 4. 清理 CUDA 缓存
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+        # 定义显存打印辅助函数
+        def _log_mem(tag):
+            if torch.cuda.is_available():
+                try:
+                    # 获取当前设备索引
+                    device = torch.cuda.current_device()
+                    # 字节转GB
+                    alloc = torch.cuda.memory_allocated(device) / (1024**3)
+                    reserved = torch.cuda.memory_reserved(device) / (1024**3)
+                    total = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+                    print(f"[{_now()}] 📊 [{tag}] GPU Mem: Alloc={alloc:.2f}GB / Rsrv={reserved:.2f}GB / Total={total:.2f}GB", flush=True)
+                except Exception:
+                    pass
+        # 1. 打印清理前状态
+        _log_mem("Before Cleanup")
+        try:
+            # 3. 删除对象并强制 GC
+            del llm
+            gc.collect()
+            
+            # 4. 销毁分布式组 (增加异常捕获防止卡死)
+            if destroy_model_parallel is not None:
+                try:
+                    destroy_model_parallel()
+                except Exception as e:
+                    print(f"[{_now()}] [WARN] destroy_model_parallel 异常 (可忽略): {e}", flush=True)
+            
+            # 5. 清理 PyTorch 缓存
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            
+            # 6. 再次休眠确保驱动层回收
+            time.sleep(1)
+
+        except Exception as e:
+            print(f"[{_now()}] [ERROR] 资源释放过程中发生错误: {e}", flush=True)
+
+        # 7. 打印清理后状态
+        _log_mem("After Cleanup")
 
 def _execute_payload(payload, exit_on_done=False):
     if isinstance(payload.get('missing'), dict):
