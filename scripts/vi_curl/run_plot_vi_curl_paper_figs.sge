@@ -1,0 +1,50 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -jc gtn-container_g8.24h
+#$ -ac d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=64g
+#$ -j y
+
+set -x
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EVAL_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "${EVAL_ROOT}"
+
+export PYTHONUNBUFFERED=1
+
+PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
+
+# Required: point to a CuRL and a no-curriculum run (each contains wandb/).
+CURL_RUN_DIR="${CURL_RUN_DIR:-/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_Qwen2.5-math-1.5B}"
+NOCURL_RUN_DIR="${NOCURL_RUN_DIR:-/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_nocurl_Qwen2.5-math-1.5B}"
+
+# vf_curl_grad_variance outputs (merged json lives here).
+VF_OUT_DIR="${VF_OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_variance}"
+VF_TAG="${VF_TAG:-}"  # optional: auto_xxx; if empty, picks newest
+
+DATASET="${DATASET:-math500}"
+DPI="${DPI:-250}"
+SAVE_DIR="${SAVE_DIR:-}"  # if empty, plot_vi_curl_paper_figs.py chooses a tag-suffixed default
+
+args=(
+  --curl_run_dir "${CURL_RUN_DIR}"
+  --nocurl_run_dir "${NOCURL_RUN_DIR}"
+  --vf_out_dir "${VF_OUT_DIR}"
+  --dataset "${DATASET}"
+  --dpi "${DPI}"
+)
+if [[ -n "${VF_TAG}" ]]; then
+  args+=( --vf_tag "${VF_TAG}" )
+fi
+if [[ -n "${SAVE_DIR}" ]]; then
+  args+=( --save_dir "${SAVE_DIR}" )
+fi
+
+"$PYTHON_BIN" -u tools/plot_vi_curl_paper_figs.py "${args[@]}"
+
+if [[ -n "${SAVE_DIR}" ]]; then
+  echo "[OK] Saved figures under: ${SAVE_DIR}"
+else
+  echo "[OK] Done. See python log for resolved save_dir."
+fi

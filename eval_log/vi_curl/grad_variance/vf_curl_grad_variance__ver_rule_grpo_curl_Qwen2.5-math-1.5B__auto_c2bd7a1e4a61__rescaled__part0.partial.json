@@ -1,0 +1,101 @@
+{
+  "analysis_id": "3895125d80df",
+  "engine": "vllm",
+  "tag": "auto_c2bd7a1e4a61__rescaled",
+  "part_id": 0,
+  "num_parts": 8,
+  "config": {
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_curl_Qwen2.5-math-1.5B",
+    "baseline_run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_nocurl_Qwen2.5-math-1.5B",
+    "prompt_file": "/home/caixq/project/LLM_EVAL/data/deepscaler/train.jsonl",
+    "prompt_field": "problem",
+    "prompt_type": "think-boxed",
+    "num_prompts": 0,
+    "num_prompt_ratio": 0.1,
+    "subset_mode": "random",
+    "seed": 42,
+    "max_prompt_len": 512,
+    "tokenizer_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_curl_Qwen2.5-math-1.5B/global_step_20/actor/huggingface",
+    "k_rollouts": 8,
+    "max_new_tokens": 3072,
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "sampling_mode": "topk",
+    "prob_mode": "full",
+    "sanitize_logits": true,
+    "proj_dim": 256,
+    "topk": 32,
+    "confidence_metric": "neg_entropy",
+    "start_beta": 0.2,
+    "end_beta": 1.0,
+    "schedule_steps": 313,
+    "beta_source": "log",
+    "beta_log_path": null,
+    "beta_log_root": "/home/caixq/project/LLM_EVAL/../VI-CURL/wandb",
+    "use_log_tau": true,
+    "gen_batch_size": 512,
+    "steps": "20,180",
+    "batch_var_seeds": null,
+    "batch_var_num_prompts": 128,
+    "batch_var_k": 1,
+    "compute_passk": true,
+    "data_name": "deepscaler",
+    "answer_field": "answer",
+    "passk_ks": "1,8"
+  },
+  "steps": [
+    20,
+    180
+  ],
+  "rows": [
+    {
+      "world_size": 4,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.202,
+      "tau": -0.21585114300251007,
+      "kept": 3004,
+      "dropped": 1014,
+      "beta_actual": 0.7476356396217023,
+      "sigma_kept": 6.271380935128173e-05,
+      "vprob_kept": 1.0677351981551938e-05,
+      "gbar_norm2_kept": 3.7375915945626827e-07,
+      "sigma_full": 7.960000955079086e-05,
+      "vprob_full": 1.3725937652887474e-05,
+      "gbar_norm2_full": 5.361858693353585e-07,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 37.9,
+        "8": 69.0
+      },
+      "pass_at_k_dropped": {
+        "1": 20.4,
+        "8": 48.9
+      },
+      "pass_at_k_full": {
+        "1": 33.5,
+        "8": 63.9
+      },
+      "valid_counts_kept": {
+        "1": 3004,
+        "8": 3004
+      },
+      "valid_counts_dropped": {
+        "1": 1014,
+        "8": 1014
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 20,
+      "beta_target_log": 0.202,
+      "beta_actual_log": 0.1708984375,
+      "tau_log": -0.21585114300251007
+    }
+  ],
+  "baseline_by_step": {}
+}

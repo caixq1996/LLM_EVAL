@@ -185,16 +185,19 @@ def main(llm, tokenizer, data_name, args):
         if args.use_vllm:
             if args.vllm_batch_size:
                 outputs = []
-                for i in range(0, len(prompts), args.vllm_batch_size):
+                total_batches = (len(prompts) + args.vllm_batch_size - 1) // args.vllm_batch_size
+                for batch_idx, i in enumerate(range(0, len(prompts), args.vllm_batch_size)):
                     batch_prompts = prompts[i:i + args.vllm_batch_size]
-                    batch_outputs = llm.generate(batch_prompts, SamplingParams(temperature=args.temperature, max_tokens=args.max_tokens_per_call, stop=stop_words, stop_token_ids=[151645, 151643] if 'qwen2' in args.model_name_or_path.lower() else None))
+                    batch_outputs = llm.generate(batch_prompts, SamplingParams(temperature=args.temperature, max_tokens=args.max_tokens_per_call, stop=stop_words, stop_token_ids=[151645, 151643] if 'qwen2' in args.model_name_or_path.lower() else None), use_tqdm=False)
                     batch_outputs = sorted(batch_outputs, key=lambda x: int(x.request_id))
                     batch_outputs = [output.outputs[0].text for output in batch_outputs]
                     outputs.extend(batch_outputs)
+                    print(f'  Batch {batch_idx + 1}/{total_batches} done ({len(outputs)}/{len(prompts)} prompts)')
             else:
-                outputs = llm.generate(prompts, SamplingParams(temperature=args.temperature, max_tokens=args.max_tokens_per_call, stop=stop_words, stop_token_ids=[151645, 151643] if 'qwen2' in args.model_name_or_path.lower() else None))
+                outputs = llm.generate(prompts, SamplingParams(temperature=args.temperature, max_tokens=args.max_tokens_per_call, stop=stop_words, stop_token_ids=[151645, 151643] if 'qwen2' in args.model_name_or_path.lower() else None), use_tqdm=False)
                 outputs = sorted(outputs, key=lambda x: int(x.request_id))
                 outputs = [output.outputs[0].text for output in outputs]
+                print(f'  Generated {len(outputs)} outputs')
         else:
             outputs = generate_completions(model=llm, tokenizer=tokenizer, prompts=prompts, max_new_tokens=args.max_tokens_per_call, batch_size=16, stop_id_sequences=stop_words)
         assert len(outputs) == len(current_prompts)

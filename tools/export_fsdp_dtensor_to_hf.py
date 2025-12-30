@@ -25,7 +25,8 @@ def _world_size_from_name(p):
 def _load_all_rank_states(shard_files):
     sd_list = []
     for f in shard_files:
-        sd = torch.load(str(f), map_location='cpu')
+        # PyTorch 2.6 defaulted `weights_only=True`, which breaks DTensor unpickling.
+        sd = torch.load(str(f), map_location='cpu', weights_only=False)
         if isinstance(sd, dict) and 'model' in sd and isinstance(sd['model'], dict):
             sd = sd['model']
         sd_list.append(sd)
@@ -80,6 +81,12 @@ def export_one_step_to_hf(step_dir, base_model_dir, export_root):
     adapter_dir = actor / 'lora_adapter'
     adapter_file = adapter_dir / 'adapter_model.safetensors'
     has_adapter = adapter_file.exists()
+    
+    # 同时支持 OPRA 格式：adapter 直接在 actor/ 下
+    if not has_adapter and (actor / 'adapter_config.json').exists():
+        adapter_dir = actor
+        adapter_file = actor / 'adapter_model.safetensors'
+        has_adapter = adapter_file.exists()
 
     # 如果存在 LoRA adapter，优先在 base 模型上加载并 merge，避免 FSDP 权重前缀不匹配导致权重丢失
     if has_adapter:

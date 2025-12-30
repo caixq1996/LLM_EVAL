@@ -1,0 +1,121 @@
+{
+  "analysis_id": "6bec560d9d3c",
+  "engine": "vllm",
+  "tag": "auto_d0401a599ee2__rescaled",
+  "part_id": 1,
+  "num_parts": 4,
+  "config": {
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_selfcert_logp_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "baseline_run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_selfcert_logp_nocurl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "prompt_file": "/home/caixq/project/LLM_EVAL/data/deepscaler/train.jsonl",
+    "prompt_field": "problem",
+    "prompt_type": "think-boxed",
+    "num_prompts": 0,
+    "num_prompt_ratio": 0.1,
+    "subset_mode": "random",
+    "seed": 42,
+    "max_prompt_len": 512,
+    "tokenizer_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_selfcert_logp_curl_DeepSeek-R1-Distill-Qwen-1.5B/global_step_20/actor/huggingface",
+    "k_rollouts": 8,
+    "max_new_tokens": 3072,
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "sampling_mode": "topk",
+    "prob_mode": "full",
+    "sanitize_logits": true,
+    "proj_dim": 256,
+    "topk": 32,
+    "confidence_metric": "neg_entropy",
+    "start_beta": 0.2,
+    "end_beta": 1.0,
+    "schedule_steps": 313,
+    "beta_source": "log",
+    "beta_log_path": null,
+    "beta_log_root": "/home/caixq/project/LLM_EVAL/../VI-CURL/wandb",
+    "use_log_tau": true,
+    "gen_batch_size": 512,
+    "steps": "40,120,200,280",
+    "batch_var_seeds": null,
+    "batch_var_num_prompts": 128,
+    "batch_var_k": 1,
+    "compute_passk": true,
+    "data_name": "deepscaler",
+    "answer_field": "answer",
+    "passk_ks": "1,8"
+  },
+  "steps": [
+    40,
+    120,
+    200,
+    280
+  ],
+  "rows": [
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.20400000000000001,
+      "tau": -0.12950889766216278,
+      "kept": 2789,
+      "dropped": 1229,
+      "beta_actual": 0.694126431060229,
+      "sigma_kept": 3.437493453816917e-05,
+      "vprob_kept": 5.807025474001096e-06,
+      "gbar_norm2_kept": 8.243529453415805e-08,
+      "sigma_full": 5.447287891122327e-05,
+      "vprob_full": 9.271954746687959e-06,
+      "gbar_norm2_full": 1.9784351975171674e-07,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 43.7,
+        "8": 74.1
+      },
+      "pass_at_k_dropped": {
+        "1": 19.9,
+        "8": 49.8
+      },
+      "pass_at_k_full": {
+        "1": 36.4,
+        "8": 66.7
+      },
+      "valid_counts_kept": {
+        "1": 2789,
+        "8": 2789
+      },
+      "valid_counts_dropped": {
+        "1": 1229,
+        "8": 1229
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 40,
+      "beta_target_log": 0.20400000000000001,
+      "beta_actual_log": 0.8525390625,
+      "tau_log": -0.12950889766216278
+    }
+  ],
+  "baseline_by_step": {
+    "40": {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.20400000000000001,
+      "tau": -0.05036866298317909,
+      "kept": 820,
+      "dropped": 3198,
+      "beta_actual": 0.20408163265306123,
+      "sigma_kept": 1.5061631609253199e-05,
+      "vprob_kept": 2.8829965373152972e-06,
+      "gbar_norm2_kept": 2.0890261570373442e-08,
+      "sigma_full": 5.011445526763947e-05,
+      "vprob_full": 9.726713069616246e-06,
+      "gbar_norm2_full": 1.0174424226846547e-07,
+      "step": 40
+    }
+  }
+}

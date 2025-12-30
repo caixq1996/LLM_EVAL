@@ -55,6 +55,36 @@ def _safe_rmtree(p: Path):
 def _now():
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+def _run_with_timeout(func, timeout_sec=30, desc="operation"):
+    """
+    在单独线程中执行函数，带超时保护。
+    用于防止 cuda.synchronize() 或 destroy_model_parallel() 导致的死锁。
+    """
+    import threading
+    result = [None]
+    error = [None]
+    
+    def wrapper():
+        try:
+            result[0] = func()
+        except Exception as e:
+            error[0] = e
+    
+    thread = threading.Thread(target=wrapper, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_sec)
+    
+    if thread.is_alive():
+        print(f"[{_now()}] [WARN] {desc} 超时 ({timeout_sec}s)，跳过", flush=True)
+        return False
+    
+    if error[0] is not None:
+        print(f"[{_now()}] [WARN] {desc} 异常: {error[0]}", flush=True)
+        return False
+    
+    return True
+
+
 def has_hf_weights(hf_dir):
     if not hf_dir or not hf_dir.exists():
         return False
@@ -64,14 +94,82 @@ def has_hf_weights(hf_dir):
         return True
     return False
 
+
+def is_adapter_checkpoint(step_dir: Path) -> bool:
+    """检测是否为 adapter 格式 checkpoint（actor/ 下有 adapter_config.json）"""
+    actor = step_dir / "actor"
+    return (actor / "adapter_config.json").exists()
+
+
+def get_adapter_base_model_suffix(step_dir: Path):
+    """
+    从路径名检测是否包含特殊算法名（如 pissa, qpissa），返回对应的 base model 后缀。
+    通过环境变量 SPECIAL_ADAPTER_ALGORITHMS 配置映射，格式: "algo1:suffix1,algo2:suffix2,..."
+    例如: "pissa:_pissa_base,qpissa:_qpissa_base"
+    """
+    # 从环境变量读取算法映射
+    special_algos = os.environ.get("SPECIAL_ADAPTER_ALGORITHMS", "pissa:_pissa_base,qpissa:_qpissa_base")
+    if not special_algos:
+        return None
+    
+    # 解析映射配置
+    algo_map = {}
+    for pair in special_algos.split(','):
+        pair = pair.strip()
+        if ':' not in pair:
+            continue
+        algo, suffix = pair.split(':', 1)
+        algo_map[algo.strip().lower()] = suffix.strip()
+    
+    if not algo_map:
+        return None
+    
+    # 从路径中提取所有组件（父目录名 + checkpoint 目录名）
+    path_parts = [step_dir.name, step_dir.parent.name]
+    path_str = '_'.join(path_parts).lower()
+    
+    # 按算法名长度降序排序，避免短名称被子串匹配（如 pissa 匹配到 qpissa）
+    sorted_algos = sorted(algo_map.items(), key=lambda x: len(x[0]), reverse=True)
+    
+    # 检查路径中是否包含特殊算法名（使用单词边界）
+    for algo, suffix in sorted_algos:
+        # 使用下划线或路径分隔符作为边界
+        if f'_{algo}_' in f'_{path_str}_' or f'_{algo}/' in f'_{path_str}/':
+            return suffix
+    
+    return None
+
+
 def _norm(s):
     return re.sub('[^a-z0-9]+', '', s.lower())
 
-def find_base_model_dir(base_root, run_name):
+
+def find_base_model_dir(base_root, run_name, adapter_suffix=None):
+    """
+    查找 base model 目录。
+    adapter_suffix: 可选后缀（如 "_pissa_base"）用于 PiSSA/QPiSSA。
+    """
     if not base_root or not base_root.exists():
         return None
     run_key = _norm(run_name)
     best = None
+    
+    # 如果有 adapter_suffix，优先查找带后缀的目录
+    if adapter_suffix:
+        for d in base_root.iterdir():
+            if not d.is_dir():
+                continue
+            if d.name.endswith(adapter_suffix):
+                # 提取不带后缀的名称进行匹配
+                base_name = d.name[:-len(adapter_suffix)]
+                key = _norm(base_name)
+                if key and (key in run_key or run_key in key):
+                    if best is None or len(key) > len(_norm(best.name.replace(adapter_suffix, ''))):
+                        best = d
+        if best:
+            return best
+    
+    # 标准匹配逻辑
     for d in base_root.iterdir():
         if not d.is_dir():
             continue
@@ -262,30 +360,39 @@ def run_groups_with_shared_llm(
                     pass
         # 1. 打印清理前状态
         _log_mem("Before Cleanup")
+        
+        # 清理超时设置（秒）
+        CLEANUP_TIMEOUT = int(os.environ.get('VLLM_CLEANUP_TIMEOUT', '30'))
+        
         try:
-            # 3. 删除对象并强制 GC
+            # 2. 删除对象并强制 GC
             del llm
             gc.collect()
             
-            # 4. 销毁分布式组 (增加异常捕获防止卡死)
+            # 3. 销毁分布式组 (带超时保护，防止 NCCL 死锁)
             if destroy_model_parallel is not None:
-                try:
-                    destroy_model_parallel()
-                except Exception as e:
-                    print(f"[{_now()}] [WARN] destroy_model_parallel 异常 (可忽略): {e}", flush=True)
+                _run_with_timeout(
+                    destroy_model_parallel,
+                    timeout_sec=CLEANUP_TIMEOUT,
+                    desc="destroy_model_parallel"
+                )
             
-            # 5. 清理 PyTorch 缓存
+            # 4. 清理 PyTorch 缓存 (带超时保护，防止 cuda.synchronize 死锁)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                torch.cuda.synchronize()
+                _run_with_timeout(
+                    torch.cuda.synchronize,
+                    timeout_sec=CLEANUP_TIMEOUT,
+                    desc="cuda.synchronize"
+                )
             
-            # 6. 再次休眠确保驱动层回收
-            time.sleep(1)
+            # 5. 短暂休眠确保驱动层回收
+            time.sleep(0.5)
 
         except Exception as e:
             print(f"[{_now()}] [ERROR] 资源释放过程中发生错误: {e}", flush=True)
 
-        # 7. 打印清理后状态
+        # 6. 打印清理后状态
         _log_mem("After Cleanup")
 
 def _execute_payload(payload, exit_on_done=False):
@@ -465,7 +572,20 @@ def main():
     os.environ.setdefault('CUDA_VISIBLE_DEVICES', ','.join(map(str, range(num_gpus))))
     os.environ.setdefault('PYTHONUNBUFFERED', '1')
 
-    runs = sorted([p for p in args.model_root.iterdir() if p.is_dir()])
+    # 检测 MODEL_ROOT 是否直接是 run 目录（包含 global_step_*）
+    all_subdirs = [p for p in args.model_root.iterdir() if p.is_dir()]
+    is_single_run = any(p.name.startswith('global_step_') for p in all_subdirs)
+    
+    if is_single_run:
+        # MODEL_ROOT 本身就是一个 run 目录，使用其目录名查找 base 模型
+        run_name_for_base = args.model_root.name
+        runs = sorted([p for p in all_subdirs if p.name.startswith('global_step_')])
+        print(f'[{_now()}] [INFO] 检测到单 run 目录模式，run_name_for_base={run_name_for_base}', flush=True)
+    else:
+        # MODEL_ROOT 下有多个 run 目录
+        run_name_for_base = None
+        runs = sorted(all_subdirs)
+    
     if not runs:
         print(f'[WARN] {args.model_root} 下未发现 run 目录', flush=True)
         return
@@ -528,9 +648,11 @@ def main():
     try:
         for run in runs:
             run_name = run.name
-            base_dir = find_base_model_dir(args.base_root, run_name)
+            # 优先使用 run_name_for_base（单 run 目录模式）
+            lookup_name = run_name_for_base if run_name_for_base else run_name
+            base_dir = find_base_model_dir(args.base_root, lookup_name)
             if base_dir is None or not has_hf_weights(base_dir):
-                print(f'[WARN] 跳过: run={run_name}', flush=True)
+                print(f'[WARN] 跳过: run={run_name} (lookup_name={lookup_name})', flush=True)
                 continue
             base_key = base_dir.name
             if not base_done.get(base_key, False):
@@ -554,19 +676,45 @@ def main():
                     else:
                         print(f'[{_now()}] ⏭ 跳过 base-only：{base_key}', flush=True)
                 base_done[base_key] = True
-            step_dirs = list_step_dirs(run, only_latest=False)
+            
+            # 单 run 目录模式: runs 已经是 global_step_* 目录列表，直接使用
+            # 多 run 目录模式: run 是 run_name 目录，需要在其下查找 global_step_*
+            if is_single_run:
+                step_dirs = [run]  # run 本身就是 step_dir
+            else:
+                step_dirs = list_step_dirs(run, only_latest=False)
+            
             if not step_dirs:
                 print(f'[WARN] 该 run 无可导出的分片模型：{run_name}')
                 continue
             for step_dir in step_dirs:
-                tag = f'{run_name}__{step_dir.name}'
+                # 为保持输出目录结构一致，使用 lookup_name 而非 run_name
+                if is_single_run:
+                    tag = f'{lookup_name}__{step_dir.name}'
+                else:
+                    tag = f'{run_name}__{step_dir.name}'
                 missing = check_missing_by_group(out_root=out_root, run_name=tag)
                 need_any = any((missing[g] for g in missing))
                 if not need_any:
                     print(f'[{_now()}] ⏭ 跳过：{tag}', flush=True)
                     continue
+                
+                # 检测 adapter 格式并获取可能的 PiSSA/QPiSSA 后缀
+                step_base_dir = base_dir
+                if is_adapter_checkpoint(step_dir):
+                    adapter_suffix = get_adapter_base_model_suffix(step_dir)
+                    if adapter_suffix:
+                        # 重新查找带后缀的 base model（如 _pissa_base, _qpissa_base）
+                        step_base_dir = find_base_model_dir(args.base_root, lookup_name, adapter_suffix=adapter_suffix)
+                        if step_base_dir is None or not has_hf_weights(step_base_dir):
+                            print(f'[{_now()}] [WARN] 跳过：{tag}（找不到 {adapter_suffix} base model）', flush=True)
+                            continue
+                        print(f'[{_now()}] ℹ️  使用特殊 base: {step_base_dir.name}', flush=True)
+                    else:
+                        print(f'[{_now()}] ℹ️  检测到 adapter checkpoint: {tag}', flush=True)
+                
                 try:
-                    hf_dir = export_one_step_to_hf(step_dir, base_dir, export_root)
+                    hf_dir = export_one_step_to_hf(step_dir, step_base_dir, export_root)
                 except Exception as e:
                     print(f'[{_now()}] [WARN] 导出失败：{tag} -> {e}', flush=True)
                     continue

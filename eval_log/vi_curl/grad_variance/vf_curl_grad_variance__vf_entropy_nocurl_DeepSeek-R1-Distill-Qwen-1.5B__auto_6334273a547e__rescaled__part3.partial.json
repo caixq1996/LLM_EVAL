@@ -1,0 +1,101 @@
+{
+  "analysis_id": "02b470d09a01",
+  "engine": "vllm",
+  "tag": "auto_6334273a547e__rescaled",
+  "part_id": 3,
+  "num_parts": 8,
+  "config": {
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_nocurl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "baseline_run_dir": null,
+    "prompt_file": "/home/caixq/project/LLM_EVAL/data/deepscaler/train.jsonl",
+    "prompt_field": "problem",
+    "prompt_type": "think-boxed",
+    "num_prompts": 0,
+    "num_prompt_ratio": 0.1,
+    "subset_mode": "random",
+    "seed": 42,
+    "max_prompt_len": 512,
+    "tokenizer_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_nocurl_DeepSeek-R1-Distill-Qwen-1.5B/global_step_20/actor/huggingface",
+    "k_rollouts": 8,
+    "max_new_tokens": 3072,
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "sampling_mode": "topk",
+    "prob_mode": "full",
+    "sanitize_logits": true,
+    "proj_dim": 256,
+    "topk": 32,
+    "confidence_metric": "neg_entropy",
+    "start_beta": 0.2,
+    "end_beta": 1.0,
+    "schedule_steps": 313,
+    "beta_source": "log",
+    "beta_log_path": null,
+    "beta_log_root": "/home/caixq/project/LLM_EVAL/../VI-CURL/wandb",
+    "use_log_tau": true,
+    "gen_batch_size": 512,
+    "steps": "80,240",
+    "batch_var_seeds": null,
+    "batch_var_num_prompts": 128,
+    "batch_var_k": 1,
+    "compute_passk": true,
+    "data_name": "deepscaler",
+    "answer_field": "answer",
+    "passk_ks": "1,8"
+  },
+  "steps": [
+    80,
+    240
+  ],
+  "rows": [
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.37142857142857144,
+      "tau": -0.18798163064888546,
+      "kept": 1493,
+      "dropped": 2525,
+      "beta_actual": 0.3715778994524639,
+      "sigma_kept": 5.791801647197073e-05,
+      "vprob_kept": 1.0151271425806147e-05,
+      "gbar_norm2_kept": 5.012207687817867e-07,
+      "sigma_full": 0.00010205472472623398,
+      "vprob_full": 2.032521075566985e-05,
+      "gbar_norm2_full": 1.6270004880820647e-06,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 53.3,
+        "8": 80.2
+      },
+      "pass_at_k_dropped": {
+        "1": 27.1,
+        "8": 59.0
+      },
+      "pass_at_k_full": {
+        "1": 36.8,
+        "8": 66.8
+      },
+      "valid_counts_kept": {
+        "1": 1493,
+        "8": 1493
+      },
+      "valid_counts_dropped": {
+        "1": 2525,
+        "8": 2525
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 80,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
+    }
+  ],
+  "baseline_by_step": {}
+}

@@ -1,0 +1,374 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -jc gtn-container_g8.24h
+#$ -ac d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=256g
+#$ -j y
+
+set -x
+
+# SCRIPT_DIR 仅用于本地直接运行；qsub 环境下脚本会被复制到临时目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 优先使用已导出的 EVAL_ROOT（multi-submit 传递），否则从 SCRIPT_DIR 推断
+if [[ -z "${EVAL_ROOT:-}" ]]; then
+  EVAL_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
+# 验证 EVAL_ROOT 是否有效，否则使用默认值
+if [[ ! -d "${EVAL_ROOT}/scripts/vi_curl" ]]; then
+  EVAL_ROOT="${HOME}/project/LLM_EVAL"
+fi
+cd "${EVAL_ROOT}"
+
+PROJECT_NAME="VI-CURL"
+EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
+
+# -------------------------------------------------------
+# 解析命令行参数
+# -------------------------------------------------------
+KEEP_HF_EXPORT="${KEEP_HF_EXPORT:-false}"
+RUN_VI_MULTI_SUBMIT="${RUN_VI_MULTI_SUBMIT:-false}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --submit)
+      RUN_VI_SUBMIT=1
+      shift
+      ;;
+    --keep-hf-export)
+      KEEP_HF_EXPORT="true"
+      shift
+      ;;
+    --multi-submit)
+      RUN_VI_MULTI_SUBMIT="true"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ $RUN_VI_MULTI_SUBMIT == "true" ]]; then
+  RUN_VI_SUBMIT=1
+fi
+
+# =======================================================
+# 日志目录设置
+# =======================================================
+export TZ='JST-9'
+_TS="$(date +%Y%m%d_%H%M%S)"
+
+if [[ -n "${RUN_VI_SUBMITTED:-}" ]]; then
+  _LOG_BASE="${EVAL_ROOT}/eval_log/vi_eval_plot_all/qsub_submit"
+else
+  _LOG_BASE="${EVAL_ROOT}/eval_log/vi_eval_plot_all/main"
+fi
+mkdir -p "${_LOG_BASE}"
+
+# 日志文件命名：优先使用 SUB_EXP_NAME（multi-submit 子任务）
+if [[ -n "${SUB_EXP_NAME:-}" ]]; then
+  _EXP_TAG="${SUB_EXP_NAME}"
+else
+  _EXP_TAG="${EXP_NAMES:-default}"
+fi
+_MAIN_LOG="${_LOG_BASE}/run_vi_curl_eval_all.${_TS}.${_EXP_TAG}.log"
+echo "[INFO] Main script log: ${_MAIN_LOG}"
+
+# 将输出同时打印到终端和日志文件
+exec > >(tee -a "${_MAIN_LOG}") 2>&1
+
+# =======================================================
+# Multi-submit mode: 为 MODEL_ROOT 下每个子目录单独提交
+# =======================================================
+if [[ -z "${JOB_ID:-}" && -z "${RUN_VI_SUBMITTED:-}" && "${RUN_VI_MULTI_SUBMIT:-false}" == "true" && "${RUN_VI_SUBMIT:-0}" == "1" ]]; then
+  _MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
+  
+  if [[ ! -d "$_MODEL_ROOT" ]]; then
+    echo "[ERROR] MODEL_ROOT not found: $_MODEL_ROOT"
+    exit 1
+  fi
+  
+  SUBDIRS=()
+  while IFS= read -r -d '' dir; do
+    SUBDIRS+=("$dir")
+  done < <(find "$_MODEL_ROOT" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+  
+  if [[ ${#SUBDIRS[@]} -eq 0 ]]; then
+    echo "[WARN] No subdirectories found under $_MODEL_ROOT, falling back to single submit."
+  else
+    SCHEDULER_TOOL="${SCHEDULER_TOOL:-$HOME/tools/qsub_gpu_scheduler_p90.sh}"
+    if [ ! -f "$SCHEDULER_TOOL" ]; then
+      echo "[ERROR] Scheduler tool not found: $SCHEDULER_TOOL"
+      exit 1
+    fi
+    source "$SCHEDULER_TOOL"
+    
+    echo "[INFO] Multi-submit mode: found ${#SUBDIRS[@]} subdirectories under $_MODEL_ROOT"
+    
+    for subdir in "${SUBDIRS[@]}"; do
+      sub_name="$(basename "$subdir")"
+      job_tag="${sub_name//[^A-Za-z0-9_]/_}"
+      job_tag="${job_tag:0:60}"
+      job_name="VI_${PROJECT_NAME}_${job_tag}"
+      job_name="${job_name//[^A-Za-z0-9_]/_}"
+      job_name="${job_name:0:120}"
+      
+      read -r jc_base n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$job_name")
+      jc_full="$(full_jclass_from_base "$jc_base")"
+      
+      echo "[INFO] Submitting: ${job_name} (MODEL_ROOT=${subdir})"
+      qsub -N "$job_name" \
+           -jc "$jc_full" \
+           -v NUM_GPUS="${n_gpus}" \
+           -v MODEL_ROOT="${subdir}" \
+           -v EXP_NAMES="${EXP_NAMES}" \
+           -v SUB_EXP_NAME="${sub_name}" \
+           -v RUN_VI_SUBMITTED=1 \
+           -v KEEP_HF_EXPORT="${KEEP_HF_EXPORT}" \
+           -v EVAL_ROOT="${EVAL_ROOT}" \
+           -V \
+           "$0"
+    done
+    
+    echo "[INFO] Submitted ${#SUBDIRS[@]} jobs."
+    exit 0
+  fi
+fi
+
+# =======================================================
+# Single-submit mode
+# =======================================================
+if [[ -z "${JOB_ID:-}" && -z "${RUN_VI_SUBMITTED:-}" && "${RUN_VI_SUBMIT:-0}" == "1" ]]; then
+  SCHEDULER_TOOL="${SCHEDULER_TOOL:-$HOME/tools/qsub_gpu_scheduler_p90.sh}"
+  if [ ! -f "$SCHEDULER_TOOL" ]; then
+    echo "[ERROR] Scheduler tool not found: $SCHEDULER_TOOL"
+    exit 1
+  fi
+  source "$SCHEDULER_TOOL"
+
+  job_tag="${EXP_NAMES//[^A-Za-z0-9_]/_}"
+  job_tag="${job_tag:0:60}"
+  job_name="VI_${PROJECT_NAME}_${job_tag}"
+  job_name="${job_name//[^A-Za-z0-9_]/_}"
+  job_name="${job_name:0:120}"
+
+  read -r jc_base n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$job_name")
+  jc_full="$(full_jclass_from_base "$jc_base")"
+
+  echo "[INFO] Submitting vi_curl job: name=${job_name} jc=${jc_full} n_gpus=${n_gpus}"
+  qsub -N "$job_name" \
+       -jc "$jc_full" \
+       -v NUM_GPUS="${n_gpus}" \
+       -v RUN_VI_SUBMITTED=1 \
+       -v KEEP_HF_EXPORT="${KEEP_HF_EXPORT}" \
+       -v EVAL_ROOT="${EVAL_ROOT}" \
+       -V \
+       "$0"
+  exit 0
+fi
+
+# =======================================================
+# 实际执行逻辑（在计算节点上运行）
+# =======================================================
+export PYTHONUNBUFFERED=1
+export TORCH_CPP_LOG_LEVEL=ERROR
+export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+
+# Detect GPU count
+if [[ -z "${NUM_GPUS:-}" ]]; then
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    NUM_GPUS=$(nvidia-smi --list-gpus | grep -c '^GPU')
+    [[ "${NUM_GPUS}" -ge 1 ]] || NUM_GPUS=1
+  else
+    NUM_GPUS=1
+  fi
+fi
+
+PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
+
+# -----------------------------
+# Shared config (passk + gradvar)
+# -----------------------------
+MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_*_curl_*}"
+
+PROMPT_FILE="${PROMPT_FILE:-${EVAL_ROOT}/data/deepscaler/train.jsonl}"
+PROMPT_FIELD="${PROMPT_FIELD:-problem}"
+ANSWER_FIELD="${ANSWER_FIELD:-answer}"
+DATA_NAME="${DATA_NAME:-deepscaler}"
+PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
+
+MAX_PROMPT_LEN="${MAX_PROMPT_LEN:-512}"
+NUM_PROMPTS="${NUM_PROMPTS:-0}"
+NUM_PROMPT_RATIO="${NUM_PROMPT_RATIO:-0.1}"
+SUBSET_MODE="${SUBSET_MODE:-random}"
+SEED="${SEED:-42}"
+
+K_ROLLOUTS="${K_ROLLOUTS:-8}"
+TARGET_KS="${TARGET_KS:-1,8}"
+COMPUTE_PASSK="${COMPUTE_PASSK:-true}"
+PASSK_KS="${PASSK_KS:-${TARGET_KS}}"
+MAX_RESPONSE_LEN="${MAX_RESPONSE_LEN:-3072}"
+MAX_TOKENS="${MAX_TOKENS:-${MAX_RESPONSE_LEN}}"
+TEMPERATURE="${TEMPERATURE:-0.6}"
+TOP_P="${TOP_P:-0.95}"
+GEN_BATCH_SIZE="${GEN_BATCH_SIZE:-512}"
+
+CONF_METRIC="${CONF_METRIC:-neg_entropy}"
+ENTROPY_TOPK="${ENTROPY_TOPK:-32}"
+TOKENIZER_DIR="${TOKENIZER_DIR:-}"
+
+START_BETA="${START_BETA:-0.2}"
+END_BETA="${END_BETA:-1.0}"
+SCHEDULE_STEPS="${SCHEDULE_STEPS:-313}"
+BETA_SCHEDULE_MODE="${BETA_SCHEDULE_MODE:-rescaled}"   # train | rescaled
+BETA_REF_STEPS="${BETA_REF_STEPS:-20-313:20}"
+BETA_SOURCE="${BETA_SOURCE:-log}"                      # compute | log
+BETA_LOG_PATH="${BETA_LOG_PATH:-}"
+BETA_LOG_ROOT="${BETA_LOG_ROOT:-${EVAL_ROOT}/../VI-CURL/wandb}"
+USE_LOG_TAU="${USE_LOG_TAU:-true}"
+
+STEPS="${STEPS:-}"
+
+USE_VLLM="${USE_VLLM:-true}"
+WORK_HOME_BASE="${WORK_HOME:-/data/giil/caixq}"
+KEEP_HF_EXPORT="${KEEP_HF_EXPORT:-false}"
+if [[ -z "${HF_EXPORT_ROOT:-}" ]]; then
+  if [[ "${KEEP_HF_EXPORT}" == "true" ]]; then
+    HF_EXPORT_ROOT="${WORK_HOME_BASE}/export"
+  else
+    if [[ -d /dev/shm ]] && [[ -w /dev/shm ]]; then
+      HF_EXPORT_ROOT="/dev/shm/vi_curl_passk_export"
+    else
+      HF_EXPORT_ROOT="${WORK_HOME_BASE}/export"
+    fi
+  fi
+fi
+BASE_MODEL_DIR="${BASE_MODEL_DIR:-}"
+EXPORT_HF_IF_NEEDED="${EXPORT_HF_IF_NEEDED:-true}"
+VLLM_TP="${VLLM_TP:-1}"
+VLLM_PP="${VLLM_PP:-1}"
+VLLM_GPU_MEM_UTIL="${VLLM_GPU_MEM_UTIL:-0.90}"
+VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-0}"
+
+# -----------------------------
+# Grad-variance specific config
+# -----------------------------
+SAMPLING_MODE="${SAMPLING_MODE:-topk}"   # topk | full
+PROB_MODE="${PROB_MODE:-full}"           # topk | full
+PROJ_DIM="${PROJ_DIM:-256}"
+TOPK="${TOPK:-${ENTROPY_TOPK}}"
+SHARD_LOAD_WORKERS="${SHARD_LOAD_WORKERS:-4}"
+EMPTY_CACHE_EACH_BATCH="${EMPTY_CACHE_EACH_BATCH:-false}"
+INFERENCE_MODE="${INFERENCE_MODE:-true}"
+ENABLE_TF32="${ENABLE_TF32:-true}"
+BATCH_VAR_SEEDS="${BATCH_VAR_SEEDS:-}"
+BATCH_VAR_NUM_PROMPTS="${BATCH_VAR_NUM_PROMPTS:-128}"
+BATCH_VAR_K="${BATCH_VAR_K:-1}"
+BASELINE_MODE="${BASELINE_MODE:-auto}"   # auto | none
+
+# -----------------------------
+# Output/log dirs
+# -----------------------------
+PASSK_OUT_DIR="${PASSK_OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/curriculum_passk}"
+PASSK_LOG_DIR="${PASSK_LOG_DIR:-${EVAL_ROOT}/eval_log/vi_curl/curriculum_passk_logs}"
+PASSK_AUTO_MERGE_PARTS="${PASSK_AUTO_MERGE_PARTS:-true}"
+PASSK_MERGE_DELETE_PARTS="${PASSK_MERGE_DELETE_PARTS:-false}"
+PASSK_MERGE_ONLY="${PASSK_MERGE_ONLY:-false}"
+PASSK_TAG="${PASSK_TAG:-}"
+
+GRAD_OUT_DIR="${GRAD_OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_variance}"
+GRAD_LOG_DIR="${GRAD_LOG_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_variance_logs}"
+GRAD_AUTO_MERGE_PARTS="${GRAD_AUTO_MERGE_PARTS:-true}"
+GRAD_MERGE_DELETE_PARTS="${GRAD_MERGE_DELETE_PARTS:-false}"
+GRAD_MERGE_ONLY="${GRAD_MERGE_ONLY:-false}"
+GRAD_TAG="${GRAD_TAG:-}"
+
+# Which tasks to run
+# pass@k is computed inside grad-variance when COMPUTE_PASSK=true.
+RUN_PASSK="${RUN_PASSK:-false}"
+RUN_GRADVAR="${RUN_GRADVAR:-true}"
+
+echo "[INFO] Job started at $(date). Detected ${NUM_GPUS} GPUs."
+echo "[INFO] MODEL_ROOT=${MODEL_ROOT}"
+echo "[INFO] PROMPT_FILE=${PROMPT_FILE} (field=${PROMPT_FIELD}, type=${PROMPT_TYPE})"
+
+# -----------------------------
+# /dev/shm HF 导出目录清理函数
+# 只清理 HF_EXPORT_ROOT 指向的目录（如果在 /dev/shm 下）
+# -----------------------------
+cleanup_shm_hf_export() {
+  local reason="$1"
+  if [[ "${HF_EXPORT_ROOT}" == /dev/shm/* ]] && [[ -d "${HF_EXPORT_ROOT}" ]]; then
+    echo "[INFO] ${reason}: 清理 /dev/shm HF 导出目录: ${HF_EXPORT_ROOT}"
+    rm -rf "${HF_EXPORT_ROOT}"
+    echo "[INFO] 清理完成"
+  fi
+}
+
+# 运行前清理 /dev/shm 中的旧 HF 导出（避免残留影响）
+cleanup_shm_hf_export "运行前"
+
+run_passk() {
+  echo "[INFO] === Running pass@k kept/dropped ==="
+  (
+    export NUM_GPUS
+    export MODEL_ROOT PROMPT_FILE PROMPT_FIELD ANSWER_FIELD DATA_NAME PROMPT_TYPE
+    export MAX_PROMPT_LEN NUM_PROMPTS NUM_PROMPT_RATIO SUBSET_MODE SEED
+    export K_ROLLOUTS TARGET_KS MAX_RESPONSE_LEN MAX_TOKENS TEMPERATURE TOP_P GEN_BATCH_SIZE
+    export CONF_METRIC ENTROPY_TOPK TOKENIZER_DIR
+    export START_BETA END_BETA SCHEDULE_STEPS BETA_SCHEDULE_MODE BETA_REF_STEPS BETA_SOURCE BETA_LOG_PATH BETA_LOG_ROOT USE_LOG_TAU
+    export STEPS
+    export USE_VLLM WORK_HOME KEEP_HF_EXPORT HF_EXPORT_ROOT BASE_MODEL_DIR EXPORT_HF_IF_NEEDED VLLM_TP VLLM_PP VLLM_GPU_MEM_UTIL VLLM_MAX_NUM_SEQS
+    export OUT_DIR="${PASSK_OUT_DIR}"
+    export LOG_DIR="${PASSK_LOG_DIR}"
+    export AUTO_MERGE_PARTS="${PASSK_AUTO_MERGE_PARTS}"
+    export MERGE_DELETE_PARTS="${PASSK_MERGE_DELETE_PARTS}"
+    export MERGE_ONLY="${PASSK_MERGE_ONLY}"
+    if [[ -n "${PASSK_TAG}" ]]; then
+      export TAG="${PASSK_TAG}"
+    else
+      unset TAG
+    fi
+    bash "${EVAL_ROOT}/scripts/vi_curl/run_vi_curl_passk_kept_dropped.sge"
+  )
+}
+
+run_gradvar() {
+  echo "[INFO] === Running grad-variance ==="
+  (
+    export NUM_GPUS
+    export MODEL_ROOT PROMPT_FILE PROMPT_FIELD PROMPT_TYPE
+    export COMPUTE_PASSK DATA_NAME ANSWER_FIELD PASSK_KS
+    export MAX_PROMPT_LEN NUM_PROMPTS NUM_PROMPT_RATIO SUBSET_MODE SEED
+    export K_ROLLOUTS MAX_TOKENS TEMPERATURE TOP_P GEN_BATCH_SIZE
+    export SAMPLING_MODE PROB_MODE PROJ_DIM TOPK CONF_METRIC
+    export START_BETA END_BETA SCHEDULE_STEPS BETA_SCHEDULE_MODE BETA_REF_STEPS BETA_SOURCE BETA_LOG_PATH BETA_LOG_ROOT USE_LOG_TAU
+    export TOKENIZER_DIR
+    export STEPS
+    export SHARD_LOAD_WORKERS EMPTY_CACHE_EACH_BATCH INFERENCE_MODE ENABLE_TF32
+    export BATCH_VAR_SEEDS BATCH_VAR_NUM_PROMPTS BATCH_VAR_K
+    export BASELINE_MODE
+    export USE_VLLM WORK_HOME KEEP_HF_EXPORT HF_EXPORT_ROOT BASE_MODEL_DIR EXPORT_HF_IF_NEEDED VLLM_TP VLLM_PP VLLM_GPU_MEM_UTIL VLLM_MAX_NUM_SEQS
+    export OUT_DIR="${GRAD_OUT_DIR}"
+    export LOG_DIR="${GRAD_LOG_DIR}"
+    export AUTO_MERGE_PARTS="${GRAD_AUTO_MERGE_PARTS}"
+    export MERGE_DELETE_PARTS="${GRAD_MERGE_DELETE_PARTS}"
+    export MERGE_ONLY="${GRAD_MERGE_ONLY}"
+    if [[ -n "${GRAD_TAG}" ]]; then
+      export TAG="${GRAD_TAG}"
+    else
+      unset TAG
+    fi
+    bash "${EVAL_ROOT}/scripts/vi_curl/run_vi_curl_grad_variance_all.sge"
+  )
+}
+
+if [[ "${RUN_GRADVAR}" == "true" ]]; then
+  run_gradvar
+fi
+
+# 运行后清理 /dev/shm 中的 HF 导出（如果不要求保留）
+if [[ "${KEEP_HF_EXPORT}" != "true" ]]; then
+  cleanup_shm_hf_export "运行后"
+fi
+
+echo "[INFO] Done at $(date)."

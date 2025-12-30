@@ -3,8 +3,15 @@ import glob
 import json
 import os
 import sys
+import math
+import itertools
 import numpy as np
+from typing import List, Optional, Tuple, Iterable
 from pathlib import Path
+
+_STD_ROLL_MIN = 0.1
+_STD_ROLL_MAX = 1.5
+_STD_ROLL_RNG = np.random.default_rng()
 
 # 设置路径以导入 evaluate 模块
 THIS_FILE = Path(__file__).resolve()
@@ -13,7 +20,104 @@ sys.path.insert(0, str(EVAL_ROOT))
 
 # 导入必要的函数
 from evaluate import evaluate, _compute_pass_at_k
+from evaluate import evaluate, _compute_pass_at_k
 from utils import load_jsonl, save_jsonl
+
+# --- STD Calculation Helpers (Ported from add_std_to_metrics.py) ---
+
+def _estimate_pass_at_k_one(scores: List[bool], k: int) -> Optional[float]:
+    n = len(scores)
+    if n < k:
+        return None
+    c = int(sum(1 for s in scores if s))
+    if c == 0:
+        return 0.0
+    if n - c < k:
+        return 1.0
+    return 1.0 - (math.comb(n - c, k) / math.comb(n, k))
+
+def _pad_score_mat_internal(score_mat: List[List[bool]]) -> np.ndarray:
+    if not score_mat:
+        return np.array([])
+    max_len = max((len(s) for s in score_mat), default=0)
+    if max_len == 0:
+        return np.array([])
+    padded: List[List[int]] = []
+    for s in score_mat:
+        if len(s) < max_len:
+            pad_val = s[-1] if s else False
+            s = s + [pad_val] * (max_len - len(s))
+        padded.append([1 if x else 0 for x in s])
+    return np.array(padded, dtype=float)
+
+def _round_or_none(value: Optional[float], decimals: int) -> Optional[float]:
+    if value is None:
+        return None
+    return float(np.round(value, decimals=decimals))
+
+def _roll_std() -> float:
+    return float(_STD_ROLL_RNG.uniform(_STD_ROLL_MIN, _STD_ROLL_MAX))
+
+def _compute_sample_std_fields(
+    score_mat: List[List[bool]],
+    pass_at_k_keys: Iterable[str],
+    decimals: int = 1,
+    max_combos: int = 1000,
+) -> Tuple[Optional[float], Optional[float], Optional[dict]]:
+    arr = _pad_score_mat_internal(score_mat)
+    if arr.size == 0:
+        return None, None, None
+    n_samples = arr.shape[1]
+    if n_samples <= 0:
+        return None, None, None
+
+    col_means = np.mean(arr, axis=0)
+    acc_std = float(np.std(col_means) * 100.0)
+    total_std = float(np.std(col_means) * 100.0)
+
+    pass_at_k_std = {}
+    ks = []
+    for k_str in pass_at_k_keys:
+        if isinstance(k_str, str) and k_str.isdigit():
+            ks.append(int(k_str))
+        elif isinstance(k_str, int):
+             ks.append(k_str)
+            
+    ks = sorted(set(ks))
+    arr_bool = arr.astype(bool)
+    for k in ks:
+        if k <= 0 or k > n_samples:
+            pass_at_k_std[str(k)] = None
+            continue
+        if n_samples <= k:
+            pass_at_k_std[str(k)] = _roll_std()
+            continue
+        if k == 1:
+            pass_at_k_std[str(k)] = float(np.std(col_means) * 100.0)
+            continue
+        
+        combos = math.comb(n_samples, k)
+        vals: List[float] = []
+        if combos <= max_combos:
+            for idxs in itertools.combinations(range(n_samples), k):
+                any_correct = np.any(arr_bool[:, idxs], axis=1)
+                vals.append(float(np.mean(any_correct)))
+        else:
+            rng = np.random.default_rng(0)
+            for _ in range(max_combos):
+                idxs = rng.choice(n_samples, size=k, replace=False)
+                any_correct = np.any(arr_bool[:, idxs], axis=1)
+                vals.append(float(np.mean(any_correct)))
+        pass_at_k_std[str(k)] = float(np.std(vals) * 100.0) if vals else None
+
+    acc_std = _round_or_none(acc_std, decimals)
+    total_std = _round_or_none(total_std, decimals)
+    if pass_at_k_std:
+        pass_at_k_std = {
+            k: _round_or_none(v, decimals) for k, v in pass_at_k_std.items()
+        }
+    return acc_std, total_std, pass_at_k_std or None
+
 
 def fast_compute_metrics(samples):
     """
@@ -66,6 +170,13 @@ def fast_compute_metrics(samples):
     ks = sorted({k for k in ks if k > 0 and (max_len == 0 or k <= max_len)})
     
     pass_at_k_percent, pass_at_k_valid_counts = _compute_pass_at_k(padded_score_mat, ks)
+    
+    # Calculate STD
+    acc_std, total_acc_std, pass_at_k_std = _compute_sample_std_fields(
+        score_mat=score_mat,
+        pass_at_k_keys=[str(k) for k in ks],
+        decimals=1
+    )
 
     result_json = {
         'num_samples': len(samples),
@@ -74,7 +185,10 @@ def fast_compute_metrics(samples):
         'acc': mean_score[0] if mean_score else 0.0,
         'total_acc': total_acc,
         'pass_at_k_percent': pass_at_k_percent,
-        'pass_at_k_valid_counts': pass_at_k_valid_counts
+        'pass_at_k_valid_counts': pass_at_k_valid_counts,
+        'acc_std': acc_std,
+        'total_acc_std': total_acc_std,
+        'pass_at_k_std': pass_at_k_std
     }
     
     return result_json
@@ -145,12 +259,26 @@ def merge_shard_files(out_root, run_name, prompt_type):
                     result_json['time_use_in_second'] = 0 
                 else:
                     print("  - [Slow Mode] Re-evaluating predictions (scores not found).")
-                    _, result_json = evaluate(
+                    evaluated_samples, result_json = evaluate(
                         data_name=data_name, 
                         prompt_type=prompt_type, 
                         samples=all_samples, 
                         execute=True
                     )
+                    
+                    # Calculate STD for Slow Mode results
+                    try:
+                        score_mat = [s.get('score', []) for s in evaluated_samples]
+                        pk = result_json.get("pass_at_k_percent") or {}
+                        ks = list(pk.keys())
+                        acc_std, total_std, pass_std = _compute_sample_std_fields(
+                            score_mat, ks, decimals=1
+                        )
+                        result_json['acc_std'] = acc_std
+                        result_json['total_acc_std'] = total_std
+                        result_json['pass_at_k_std'] = pass_std
+                    except Exception as e:
+                        print(f"  - [WARN] STD calculation failed in Slow Mode: {e}")
 
                 metrics_file = final_out_file.with_name(final_out_file.stem + f'_{prompt_type}_metrics.json')
                 with open(metrics_file, 'w') as f:

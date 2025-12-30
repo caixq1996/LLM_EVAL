@@ -1,0 +1,181 @@
+{
+  "run_name": "vf_majority_vote_curl_Qwen2.5-math-1.5B",
+  "tag": "auto_5068767b0021",
+  "num_parts": 4,
+  "config": {
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_Qwen2.5-math-1.5B",
+    "prompt_file": "/uge_mnt/home/caixq/project/LLM_EVAL/data/deepscaler/train.jsonl",
+    "prompt_field": "problem",
+    "answer_field": "answer",
+    "data_name": "deepscaler",
+    "prompt_type": "think-boxed",
+    "num_prompts": 512,
+    "subset_mode": "random",
+    "seed": 42,
+    "k_rollouts": 8,
+    "target_ks": [
+      1,
+      8
+    ],
+    "max_new_tokens": 256,
+    "temperature": 1.0,
+    "top_p": 1.0,
+    "gen_batch_size": 256,
+    "confidence_metric": "neg_entropy",
+    "entropy_topk": 32,
+    "start_beta": 0.2,
+    "end_beta": 1.0,
+    "schedule_steps": 313,
+    "beta_schedule_mode": "rescaled",
+    "beta_ref_steps": [
+      20,
+      40,
+      60,
+      80,
+      100,
+      120,
+      140,
+      160,
+      180,
+      200,
+      220,
+      240,
+      260,
+      280,
+      300
+    ],
+    "beta_source": "log",
+    "beta_log_path": null,
+    "beta_log_root": "/uge_mnt/home/caixq/project/LLM_EVAL/../VI-CURL/wandb",
+    "use_log_tau": true,
+    "steps": [
+      60,
+      140,
+      220,
+      300
+    ],
+    "use_vllm": true,
+    "vllm_tensor_parallel_size": 1,
+    "vllm_pipeline_parallel_size": 1,
+    "vllm_gpu_memory_utilization": 0.9,
+    "vllm_max_num_seqs": 0,
+    "part_id": 2,
+    "num_parts": 4
+  },
+  "steps": [
+    60,
+    140,
+    220,
+    300
+  ],
+  "rows": [
+    {
+      "step": 60,
+      "beta_target": 0.20600000000000002,
+      "beta_target_log": 0.20600000000000002,
+      "beta_actual": 0.001953125,
+      "beta_actual_log": 0.261962890625,
+      "tau_log": -0.0796332135796547,
+      "tau": -0.0796332135796547,
+      "kept_count": 1,
+      "dropped_count": 511,
+      "pass_at_k_kept": {
+        "1": 37.5,
+        "8": 100.0
+      },
+      "pass_at_k_dropped": {
+        "1": 5.2,
+        "8": 15.7
+      },
+      "valid_counts_kept": {
+        "1": 1,
+        "8": 1
+      },
+      "valid_counts_dropped": {
+        "1": 511,
+        "8": 511
+      }
+    },
+    {
+      "step": 140,
+      "beta_target": 0.5428571428571429,
+      "beta_target_log": null,
+      "beta_actual": 0.54296875,
+      "beta_actual_log": null,
+      "tau_log": null,
+      "tau": -0.18786264208223766,
+      "kept_count": 278,
+      "dropped_count": 234,
+      "pass_at_k_kept": {
+        "1": 7.5,
+        "8": 19.8
+      },
+      "pass_at_k_dropped": {
+        "1": 2.7,
+        "8": 11.5
+      },
+      "valid_counts_kept": {
+        "1": 278,
+        "8": 278
+      },
+      "valid_counts_dropped": {
+        "1": 234,
+        "8": 234
+      }
+    },
+    {
+      "step": 220,
+      "beta_target": 0.7714285714285716,
+      "beta_target_log": null,
+      "beta_actual": 0.771484375,
+      "beta_actual_log": null,
+      "tau_log": null,
+      "tau": -0.2547114136624746,
+      "kept_count": 395,
+      "dropped_count": 117,
+      "pass_at_k_kept": {
+        "1": 6.2,
+        "8": 15.9
+      },
+      "pass_at_k_dropped": {
+        "1": 2.6,
+        "8": 7.7
+      },
+      "valid_counts_kept": {
+        "1": 395,
+        "8": 395
+      },
+      "valid_counts_dropped": {
+        "1": 117,
+        "8": 117
+      }
+    },
+    {
+      "step": 300,
+      "beta_target": 1.0,
+      "beta_target_log": null,
+      "beta_actual": 1.0,
+      "beta_actual_log": null,
+      "tau_log": null,
+      "tau": -Infinity,
+      "kept_count": 512,
+      "dropped_count": 0,
+      "pass_at_k_kept": {
+        "1": 5.1,
+        "8": 13.7
+      },
+      "pass_at_k_dropped": {
+        "1": null,
+        "8": null
+      },
+      "valid_counts_kept": {
+        "1": 512,
+        "8": 512
+      },
+      "valid_counts_dropped": {
+        "1": 0,
+        "8": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,491 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -jc gtb-container_g8.24h
+#$ -ac d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=256g
+#$ -j y
+
+set -x
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EVAL_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "${EVAL_ROOT}"
+
+export PYTHONUNBUFFERED=1
+export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+
+if [[ -z "${NUM_GPUS:-}" ]]; then
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    NUM_GPUS=$(nvidia-smi --list-gpus | grep -c '^GPU')
+    [[ "${NUM_GPUS}" -ge 1 ]] || NUM_GPUS=1
+  else
+    NUM_GPUS=1
+  fi
+fi
+
+PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
+
+# Root or single run
+MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_Qwen2.5-math-1.5B}"
+
+# Dataset/prompt config
+PROMPT_FILE="${PROMPT_FILE:-${EVAL_ROOT}/data/deepscaler/train.jsonl}"
+PROMPT_FIELD="${PROMPT_FIELD:-problem}"
+ANSWER_FIELD="${ANSWER_FIELD:-answer}"
+DATA_NAME="${DATA_NAME:-deepscaler}"
+PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
+
+# Prompt filtering / subset config
+MAX_PROMPT_LEN="${MAX_PROMPT_LEN:-512}"
+NUM_PROMPTS="${NUM_PROMPTS:-0}"
+NUM_PROMPT_RATIO="${NUM_PROMPT_RATIO:-0.01}"
+SUBSET_MODE="${SUBSET_MODE:-random}"
+SEED="${SEED:-42}"
+
+# Generation config
+K_ROLLOUTS="${K_ROLLOUTS:-8}"
+TARGET_KS="${TARGET_KS:-1,8}"
+MAX_RESPONSE_LEN="${MAX_RESPONSE_LEN:-3072}"
+MAX_TOKENS="${MAX_TOKENS:-${MAX_RESPONSE_LEN}}"
+TEMPERATURE="${TEMPERATURE:-0.6}"
+TOP_P="${TOP_P:-0.95}"
+GEN_BATCH_SIZE="${GEN_BATCH_SIZE:-512}"
+
+# Confidence
+CONF_METRIC="${CONF_METRIC:-neg_entropy}"
+ENTROPY_TOPK="${ENTROPY_TOPK:-32}"
+
+# Tokenizer (for prompt length filter)
+TOKENIZER_DIR="${TOKENIZER_DIR:-}"
+
+# Curriculum schedule (align with training)
+START_BETA="${START_BETA:-0.2}"
+END_BETA="${END_BETA:-1.0}"
+SCHEDULE_STEPS="${SCHEDULE_STEPS:-313}"
+BETA_SCHEDULE_MODE="${BETA_SCHEDULE_MODE:-rescaled}"   # train | rescaled
+BETA_REF_STEPS="${BETA_REF_STEPS:-20-313:20}"
+BETA_SOURCE="${BETA_SOURCE:-log}"                  # compute | log
+BETA_LOG_PATH="${BETA_LOG_PATH:-}"                     # optional wandb output.log path
+BETA_LOG_ROOT="${BETA_LOG_ROOT:-${EVAL_ROOT}/../VI-CURL/wandb}"
+USE_LOG_TAU="${USE_LOG_TAU:-true}"
+
+# Optional step subset: e.g. "20-300:20" or "20,40,60"
+STEPS="${STEPS:-}"
+
+# vLLM export config
+USE_VLLM="${USE_VLLM:-true}"
+WORK_HOME_BASE="${WORK_HOME:-/data/giil/caixq}"
+KEEP_HF_EXPORT="${KEEP_HF_EXPORT:-false}"
+if [[ -z "${HF_EXPORT_ROOT:-}" ]]; then
+  if [[ "${KEEP_HF_EXPORT}" == "true" ]]; then
+    HF_EXPORT_ROOT="${WORK_HOME_BASE}/export"
+  else
+    if [[ -d /dev/shm ]] && [[ -w /dev/shm ]]; then
+      HF_EXPORT_ROOT="/dev/shm/vi_curl_passk_export"
+    else
+      HF_EXPORT_ROOT="${WORK_HOME_BASE}/export"
+    fi
+  fi
+fi
+BASE_MODEL_DIR="${BASE_MODEL_DIR:-}"
+EXPORT_HF_IF_NEEDED="${EXPORT_HF_IF_NEEDED:-true}"
+VLLM_TP="${VLLM_TP:-1}"
+VLLM_PP="${VLLM_PP:-1}"
+VLLM_GPU_MEM_UTIL="${VLLM_GPU_MEM_UTIL:-0.90}"
+VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-0}"
+
+# Output
+OUT_DIR="${OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/curriculum_passk}"
+LOG_DIR="${LOG_DIR:-${EVAL_ROOT}/eval_log/vi_curl/curriculum_passk_logs}"
+AUTO_MERGE_PARTS="${AUTO_MERGE_PARTS:-true}"
+MERGE_DELETE_PARTS="${MERGE_DELETE_PARTS:-false}"
+MERGE_ONLY="${MERGE_ONLY:-false}"
+
+mkdir -p "${OUT_DIR}" "${LOG_DIR}"
+
+TS="$(date +%Y%m%d_%H%M%S)"
+echo "[INFO] Job started at ${TS}. Detected ${NUM_GPUS} GPUs."
+echo "[INFO] MODEL_ROOT=${MODEL_ROOT}"
+echo "[INFO] PROMPT_FILE=${PROMPT_FILE} (data=${DATA_NAME}, field=${PROMPT_FIELD}, type=${PROMPT_TYPE})"
+
+run_one() {
+  local run_dir="$1"
+  local tag="$2"
+
+  local args=(
+    --run_dir "${run_dir}"
+    --prompt_file "${PROMPT_FILE}"
+    --prompt_field "${PROMPT_FIELD}"
+    --answer_field "${ANSWER_FIELD}"
+    --data_name "${DATA_NAME}"
+    --prompt_type "${PROMPT_TYPE}"
+    --num_prompts "${NUM_PROMPTS}"
+    --num_prompt_ratio "${NUM_PROMPT_RATIO}"
+    --max_prompt_len "${MAX_PROMPT_LEN}"
+    --subset_mode "${SUBSET_MODE}"
+    --seed "${SEED}"
+    --k_rollouts "${K_ROLLOUTS}"
+    --target_ks "${TARGET_KS}"
+    --max_new_tokens "${MAX_TOKENS}"
+    --temperature "${TEMPERATURE}"
+    --top_p "${TOP_P}"
+    --gen_batch_size "${GEN_BATCH_SIZE}"
+    --confidence_metric "${CONF_METRIC}"
+    --entropy_topk "${ENTROPY_TOPK}"
+    --start_beta "${START_BETA}"
+    --end_beta "${END_BETA}"
+    --schedule_steps "${SCHEDULE_STEPS}"
+    --beta_schedule_mode "${BETA_SCHEDULE_MODE}"
+    --beta_source "${BETA_SOURCE}"
+    --out_dir "${OUT_DIR}"
+  )
+  if [[ -n "${BETA_REF_STEPS}" ]]; then
+    args+=( --beta_ref_steps "${BETA_REF_STEPS}" )
+  fi
+  if [[ -n "${BETA_LOG_PATH}" ]]; then
+    args+=( --beta_log_path "${BETA_LOG_PATH}" )
+  fi
+  if [[ -n "${BETA_LOG_ROOT}" ]]; then
+    args+=( --beta_log_root "${BETA_LOG_ROOT}" )
+  fi
+  if [[ -n "${TOKENIZER_DIR}" ]]; then
+    args+=( --tokenizer_dir "${TOKENIZER_DIR}" )
+  fi
+  if [[ "${USE_LOG_TAU}" != "true" ]]; then
+    args+=( --no_use_log_tau )
+  fi
+  if [[ -n "${STEPS}" ]]; then
+    args+=( --steps "${STEPS}" )
+  fi
+  if [[ "${USE_VLLM}" == "true" ]]; then
+    args+=( --use_vllm )
+    args+=( --hf_export_root "${HF_EXPORT_ROOT}" )
+    args+=( --vllm_tensor_parallel_size "${VLLM_TP}" )
+    args+=( --vllm_pipeline_parallel_size "${VLLM_PP}" )
+    args+=( --vllm_gpu_memory_utilization "${VLLM_GPU_MEM_UTIL}" )
+    args+=( --vllm_max_num_seqs "${VLLM_MAX_NUM_SEQS}" )
+    if [[ -n "${BASE_MODEL_DIR}" ]]; then
+      args+=( --base_model_dir "${BASE_MODEL_DIR}" )
+    fi
+    if [[ "${EXPORT_HF_IF_NEEDED}" == "true" ]]; then
+      args+=( --export_hf_if_needed )
+    fi
+    if [[ "${KEEP_HF_EXPORT}" == "true" ]]; then
+      args+=( --keep_hf_export )
+    fi
+  else
+    args+=( --no_use_vllm )
+  fi
+  if [[ -n "${tag}" ]]; then
+    args+=( --tag "${tag}" )
+  fi
+    if [[ -n "${PART_ID:-}" && -n "${NUM_PARTS:-}" ]]; then
+    args+=( --part_id "${PART_ID}" --num_parts "${NUM_PARTS}" --no_plot )
+  fi
+
+  "$PYTHON_BIN" -u tools/vi_curl_passk_kept_dropped.py "${args[@]}"
+}
+
+merge_one_parts() {
+  local run_name="$1"
+  local tag="$2"
+  local num_parts="$3"
+
+  local missing=0
+  for ((i=0; i<num_parts; i++)); do
+    local p="${OUT_DIR}/vi_curl_passk__${run_name}__${tag}__part${i}.json"
+    if [[ ! -f "${p}" ]]; then
+      if (( missing == 0 )); then
+        echo "[WARN] Missing part json(s); skip merge for now:"
+      fi
+      echo "[WARN]   ${p}"
+      missing=$((missing + 1))
+    fi
+  done
+  if (( missing > 0 )); then
+    return 0
+  fi
+
+  local args=( --out_dir "${OUT_DIR}" --run_name "${run_name}" --tag "${tag}" --num_parts "${num_parts}" )
+  if [[ "${MERGE_DELETE_PARTS}" == "true" ]]; then
+    args+=( --delete_parts )
+  fi
+  echo "[INFO] Merging parts: run=${run_name} tag=${tag} num_parts=${num_parts}"
+  "$PYTHON_BIN" -u "${EVAL_ROOT}/tools/merge_vi_curl_passk_parts.py" "${args[@]}"
+}
+
+auto_merge_parts_in_out_dir() {
+  if [[ "${AUTO_MERGE_PARTS}" != "true" ]]; then
+    return 0
+  fi
+  while IFS=$'\t' read -r run_name tag num_parts; do
+    [[ -z "${run_name}" || -z "${tag}" || -z "${num_parts}" ]] && continue
+    merge_one_parts "${run_name}" "${tag}" "${num_parts}"
+  done < <(
+    "$PYTHON_BIN" - "${OUT_DIR}" <<'PY'
+import re
+import sys
+import json
+from pathlib import Path
+
+out_dir = Path(sys.argv[1]).expanduser()
+if not out_dir.exists():
+    sys.exit(0)
+
+pat = re.compile(r"^vi_curl_passk__(?P<run>.+?)__(?P<tag>.+?)__part(?P<part>\d+)\.json$")
+groups = {}
+for p in out_dir.glob("vi_curl_passk__*__*__part*.json"):
+    m = pat.match(p.name)
+    if not m:
+        continue
+    run = m.group("run")
+    tag = m.group("tag")
+    part = int(m.group("part"))
+    exp = None
+    try:
+        payload = json.loads(p.read_text(encoding="utf-8"))
+        exp = int(payload.get("num_parts") or 0) or None
+    except Exception:
+        exp = None
+    g = groups.setdefault((run, tag), {"parts": set(), "expected": 0})
+    g["parts"].add(part)
+    if exp is not None and exp > int(g["expected"]):
+        g["expected"] = exp
+
+for (run, tag), g in sorted(groups.items()):
+    parts = g["parts"]
+    expected = int(g["expected"]) or 0
+    if not parts:
+        continue
+    max_part = max(parts)
+    if expected <= 0:
+        expected = max_part + 1
+    if expected < max_part + 1:
+        expected = max_part + 1
+    want = set(range(expected))
+    if set(parts) != want:
+        continue
+    print(f"{run}\t{tag}\t{expected}")
+PY
+  )
+}
+
+if [[ "${MERGE_ONLY}" == "true" ]]; then
+  echo "[INFO] MERGE_ONLY=true: scan OUT_DIR and merge any complete part sets."
+  auto_merge_parts_in_out_dir
+  exit 0
+fi
+
+# -------------------------------------------------------
+# Discover run dirs
+# -------------------------------------------------------
+is_run_dir() {
+  local d="$1"
+  compgen -G "${d}/global_step_*" >/dev/null 2>&1
+}
+
+MODEL_ROOTS=()
+if compgen -G "${MODEL_ROOT}" >/dev/null 2>&1; then
+  while IFS= read -r p; do
+    [[ -n "${p}" ]] && MODEL_ROOTS+=("${p}")
+  done < <(compgen -G "${MODEL_ROOT}")
+else
+  MODEL_ROOTS=("${MODEL_ROOT}")
+fi
+
+RUN_DIRS=()
+for root in "${MODEL_ROOTS[@]}"; do
+  if [[ -d "${root}" ]] && is_run_dir "${root}"; then
+    RUN_DIRS+=("${root}")
+    continue
+  fi
+  if [[ -d "${root}" ]]; then
+    while IFS= read -r -d '' d; do
+      if is_run_dir "${d}"; then
+        RUN_DIRS+=("${d}")
+      fi
+    done < <(find "${root}" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+  else
+    echo "[WARN] MODEL_ROOT entry not found: ${root}"
+  fi
+done
+
+if [[ ${#RUN_DIRS[@]} -eq 0 ]]; then
+  echo "[WARN] No run dirs found under ${MODEL_ROOT}"
+  exit 0
+fi
+
+# -------------------------------------------------------
+# Single-run step sharding (if one run + many steps)
+# -------------------------------------------------------
+if [[ ${#RUN_DIRS[@]} -eq 1 ]]; then
+  RUN_DIR="${RUN_DIRS[0]}"
+  RUN_NAME="$(basename "${RUN_DIR}")"
+  STEP_CSV="$("$PYTHON_BIN" - "${RUN_DIR}" "${STEPS}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+def list_steps(run_dir: Path):
+    steps = []
+    for p in sorted(run_dir.glob("global_step_*")):
+        m = re.match(r"^global_step_(\d+)$", p.name)
+        if m:
+            steps.append(int(m.group(1)))
+    steps.sort()
+    return steps
+
+def parse_steps_arg(steps_arg, available):
+    if not steps_arg:
+        return list(available)
+    s = steps_arg.strip()
+    if not s:
+        return list(available)
+    requested = []
+    for part in [x.strip() for x in s.split(",") if x.strip()]:
+        if "-" in part:
+            m = re.match(r"^(\d+)-(\d+)(?::(\d+))?$", part)
+            if not m:
+                raise SystemExit(f"Invalid --steps segment: {part}")
+            a = int(m.group(1))
+            b = int(m.group(2))
+            stride = int(m.group(3) or 1)
+            if stride < 1:
+                raise SystemExit("Stride in --steps must be >= 1")
+            if b >= a:
+                requested.extend(list(range(a, b + 1, stride)))
+            else:
+                requested.extend(list(range(a, b - 1, -stride)))
+        else:
+            requested.append(int(part))
+    avail_set = set(available)
+    seen = set()
+    selected = []
+    for x in requested:
+        if x in avail_set and x not in seen:
+            selected.append(x)
+            seen.add(x)
+    return selected
+
+run_dir = Path(sys.argv[1])
+steps_arg = sys.argv[2] if len(sys.argv) > 2 else ""
+avail = list_steps(run_dir)
+sel = parse_steps_arg(steps_arg if steps_arg else None, avail)
+print(",".join(str(x) for x in sel))
+PY
+  )"
+
+  if [[ -z "${STEP_CSV}" ]]; then
+    echo "[WARN] No steps found under ${RUN_DIR}."
+    exit 0
+  fi
+
+  IFS=',' read -r -a STEP_ARR <<< "${STEP_CSV}"
+  NPARTS="${NUM_GPUS}"
+  if (( ${#STEP_ARR[@]} < NPARTS )); then
+    NPARTS="${#STEP_ARR[@]}"
+  fi
+  if (( NPARTS <= 1 )); then
+    echo "[INFO] Only one step shard needed; continue single-process mode."
+  else
+    if [[ "${BETA_SCHEDULE_MODE}" == "rescaled" ]] && [[ -z "${BETA_REF_STEPS}" ]]; then
+      BETA_REF_STEPS="${STEP_CSV}"
+    fi
+    if [[ -z "${TAG:-}" ]]; then
+      TAG="$("$PYTHON_BIN" - "${RUN_DIR}" "${PROMPT_FILE}" "${PROMPT_FIELD}" "${ANSWER_FIELD}" "${DATA_NAME}" "${PROMPT_TYPE}" "${NUM_PROMPTS}" "${NUM_PROMPT_RATIO}" "${MAX_PROMPT_LEN}" "${SUBSET_MODE}" "${SEED}" "${K_ROLLOUTS}" "${TARGET_KS}" "${MAX_TOKENS}" "${TEMPERATURE}" "${TOP_P}" "${GEN_BATCH_SIZE}" "${CONF_METRIC}" "${ENTROPY_TOPK}" "${TOKENIZER_DIR}" "${START_BETA}" "${END_BETA}" "${SCHEDULE_STEPS}" "${BETA_SCHEDULE_MODE}" "${BETA_REF_STEPS}" "${BETA_SOURCE}" "${BETA_LOG_PATH}" "${BETA_LOG_ROOT}" "${USE_LOG_TAU}" "${STEP_CSV}" "${USE_VLLM}" "${HF_EXPORT_ROOT}" "${KEEP_HF_EXPORT}" "${VLLM_TP}" "${VLLM_PP}" "${VLLM_GPU_MEM_UTIL}" "${VLLM_MAX_NUM_SEQS}" <<'PY'
+import hashlib, json, sys
+keys = [
+  'run_dir','prompt_file','prompt_field','answer_field','data_name','prompt_type',
+  'num_prompts','num_prompt_ratio','max_prompt_len','subset_mode','seed','k_rollouts','target_ks','max_new_tokens','temperature','top_p','gen_batch_size',
+  'conf_metric','entropy_topk','tokenizer_dir','start_beta','end_beta','schedule_steps',
+  'beta_schedule_mode','beta_ref_steps','beta_source','beta_log_path','beta_log_root','use_log_tau','steps',
+  'use_vllm','hf_export_root','keep_hf_export','vllm_tp','vllm_pp','vllm_gpu_mem_util','vllm_max_num_seqs'
+]
+vals = sys.argv[1:]
+obj = {k: v for k, v in zip(keys, vals)}
+beta_source = (obj.get("beta_source") or "compute").strip().lower()
+beta_log_path = (obj.get("beta_log_path") or "").strip()
+beta_log_root = (obj.get("beta_log_root") or "").strip()
+if beta_source in ("compute", "") and beta_log_path == "" and beta_log_root == "":
+  obj.pop("beta_source", None)
+  obj.pop("beta_log_path", None)
+  obj.pop("beta_log_root", None)
+  obj.pop("use_log_tau", None)
+for k in ['num_prompts','max_prompt_len','seed','k_rollouts','max_new_tokens','gen_batch_size','entropy_topk','schedule_steps','vllm_tp','vllm_pp','vllm_max_num_seqs']:
+  try:
+    obj[k] = int(obj[k])
+  except Exception:
+    pass
+for k in ['num_prompt_ratio','temperature','top_p','start_beta','end_beta','vllm_gpu_mem_util']:
+  try:
+    obj[k] = float(obj[k])
+  except Exception:
+    pass
+s = json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(',',':'))
+h = hashlib.sha1(s.encode('utf-8')).hexdigest()[:12]
+print(f"auto_{h}")
+PY
+)"
+    fi
+
+    echo "[INFO] Single-run step sharding enabled: run=${RUN_NAME} steps=${#STEP_ARR[@]} parts=${NPARTS} tag=${TAG}"
+    pids=()
+    for ((i=0; i<NPARTS; i++)); do
+      part_steps=()
+      for ((j=i; j<${#STEP_ARR[@]}; j+=NPARTS)); do
+        part_steps+=("${STEP_ARR[j]}")
+      done
+      PART_STEPS_CSV="$(IFS=,; echo "${part_steps[*]}")"
+      LOG_FILE="${LOG_DIR}/vi_curl_passk.${TS}.${RUN_NAME}.part${i}_of_${NPARTS}.gpu${i}.log"
+      echo "[INFO] Launch part ${i}/${NPARTS} on GPU ${i}: steps=${PART_STEPS_CSV} Log: ${LOG_FILE}"
+      (
+        export CUDA_VISIBLE_DEVICES="${i}"
+        export PART_ID="${i}"
+        export NUM_PARTS="${NPARTS}"
+        export STEPS="${PART_STEPS_CSV}"
+        run_one "${RUN_DIR}" "${TAG}"
+      ) > "${LOG_FILE}" 2>&1 &
+      pids+=($!)
+      sleep 2
+    done
+    echo "[INFO] All parts started. Waiting for completion..."
+    wait || true
+    merge_one_parts "${RUN_NAME}" "${TAG}" "${NPARTS}"
+    auto_merge_parts_in_out_dir
+    echo "[INFO] Done at $(date). Outputs under: ${OUT_DIR}"
+    exit 0
+  fi
+fi
+
+# -------------------------------------------------------
+# Multi-run (one worker per GPU)
+# -------------------------------------------------------
+pids=()
+gpu=0
+for run_dir in "${RUN_DIRS[@]}"; do
+  run_name="$(basename "${run_dir}")"
+  LOG_FILE="${LOG_DIR}/vi_curl_passk.${TS}.${run_name}.gpu${gpu}.log"
+  echo "[INFO] Launch: ${run_name} on GPU ${gpu}. Log: ${LOG_FILE}"
+  (
+    export CUDA_VISIBLE_DEVICES="${gpu}"
+    run_one "${run_dir}" "${TAG:-}"
+  ) > "${LOG_FILE}" 2>&1 &
+
+  pids+=($!)
+  gpu=$(( (gpu + 1) % NUM_GPUS ))
+  while (( $(jobs -rp | wc -l) >= NUM_GPUS )); do
+    if wait -n 2>/dev/null; then
+      true
+    else
+      wait "${pids[0]}" || true
+      pids=("${pids[@]:1}")
+    fi
+  done
+  sleep 2
+done
+
+echo "[INFO] All workers started. Waiting for completion..."
+wait || true
+
+auto_merge_parts_in_out_dir
+echo "[INFO] Done at $(date). Outputs under: ${OUT_DIR}"

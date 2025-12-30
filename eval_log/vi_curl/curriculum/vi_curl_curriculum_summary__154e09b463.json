@@ -1,0 +1,72 @@
+[
+  {
+    "run_name": "vf_majority_vote_curl_Llama-3.2-3B-Instruct",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_Llama-3.2-3B-Instruct",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_Llama-3.2-3B-Instruct/wandb/wandb/run-20251222_072305-eezzg42p/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_majority_vote_curl_Llama-3.2-3B-Instruct.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_majority_vote_curl_Llama-3.2-3B-Instruct.png"
+  },
+  {
+    "run_name": "vf_entropy_curl_Llama-3.2-3B-Instruct",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_curl_Llama-3.2-3B-Instruct",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_curl_Llama-3.2-3B-Instruct/wandb/wandb/run-20251222_023944-9pfgiks4/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_entropy_curl_Llama-3.2-3B-Instruct.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_entropy_curl_Llama-3.2-3B-Instruct.png"
+  },
+  {
+    "run_name": "vf_majority_vote_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_DeepSeek-R1-Distill-Qwen-1.5B/wandb/wandb/run-20251221_004627-g3hcu2h4/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_majority_vote_curl_DeepSeek-R1-Distill-Qwen-1.5B.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_majority_vote_curl_DeepSeek-R1-Distill-Qwen-1.5B.png"
+  },
+  {
+    "run_name": "vf_selfcert_logp_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_selfcert_logp_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_selfcert_logp_curl_DeepSeek-R1-Distill-Qwen-1.5B/wandb/wandb/run-20251219_150127-f9gve6bz/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_selfcert_logp_curl_DeepSeek-R1-Distill-Qwen-1.5B.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_selfcert_logp_curl_DeepSeek-R1-Distill-Qwen-1.5B.png"
+  },
+  {
+    "run_name": "vf_entropy_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_curl_DeepSeek-R1-Distill-Qwen-1.5B/wandb/wandb/run-20251219_150127-pmohd4k1/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_entropy_curl_DeepSeek-R1-Distill-Qwen-1.5B.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_entropy_curl_DeepSeek-R1-Distill-Qwen-1.5B.png"
+  },
+  {
+    "run_name": "ver_rule_grpo_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_curl_DeepSeek-R1-Distill-Qwen-1.5B/wandb/wandb/run-20251219_150140-qfiljuwk/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__ver_rule_grpo_curl_DeepSeek-R1-Distill-Qwen-1.5B.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__ver_rule_grpo_curl_DeepSeek-R1-Distill-Qwen-1.5B.png"
+  },
+  {
+    "run_name": "vf_majority_vote_curl_Qwen2.5-math-1.5B",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_Qwen2.5-math-1.5B",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_Qwen2.5-math-1.5B/wandb/wandb/run-20251220_000342-405l5cl2/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_majority_vote_curl_Qwen2.5-math-1.5B.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_majority_vote_curl_Qwen2.5-math-1.5B.png"
+  },
+  {
+    "run_name": "vf_selfcert_logp_curl_Qwen2.5-math-1.5B",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_selfcert_logp_curl_Qwen2.5-math-1.5B",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_selfcert_logp_curl_Qwen2.5-math-1.5B/wandb/wandb/run-20251220_002517-mngl19eq/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_selfcert_logp_curl_Qwen2.5-math-1.5B.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_selfcert_logp_curl_Qwen2.5-math-1.5B.png"
+  },
+  {
+    "run_name": "vf_entropy_curl_Qwen2.5-math-1.5B",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_curl_Qwen2.5-math-1.5B",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_curl_Qwen2.5-math-1.5B/wandb/wandb/run-20251220_005759-khim4khy/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_entropy_curl_Qwen2.5-math-1.5B.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__vf_entropy_curl_Qwen2.5-math-1.5B.png"
+  },
+  {
+    "run_name": "ver_rule_grpo_curl_Qwen2.5-math-1.5B",
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_curl_Qwen2.5-math-1.5B",
+    "log_path": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_curl_Qwen2.5-math-1.5B/wandb/wandb/run-20251219_150130-2ij8hsqm/files/output.log",
+    "csv_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__ver_rule_grpo_curl_Qwen2.5-math-1.5B.csv",
+    "fig_path": "/uge_mnt/home/caixq/project/LLM_EVAL/eval_log/vi_curl/curriculum/vi_curl_curriculum__ver_rule_grpo_curl_Qwen2.5-math-1.5B.png"
+  }
+]

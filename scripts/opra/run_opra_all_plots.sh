@@ -1,0 +1,169 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+SCRIPTS_DIR="$PROJECT_ROOT/LLM_EVAL/scripts/opra"
+
+CHECKPOINT_ROOT=${CHECKPOINT_ROOT:-"$PROJECT_ROOT/OPRA/checkpoints/OPRA-LoRA"}
+BASE_MODEL=${BASE_MODEL:-}
+RUNS=${RUNS:-}
+RUN_FILTER=${RUN_FILTER:-}
+PROMPT_FIELD=${PROMPT_FIELD:-question}
+ANSWER_FIELD=${ANSWER_FIELD:-answer}
+PROMPT_FILE_MATH=${PROMPT_FILE_MATH:-"$PROJECT_ROOT/LLM_EVAL/data/math500/test.jsonl"}
+PROMPT_FILE_GSM8K=${PROMPT_FILE_GSM8K:-"$PROJECT_ROOT/LLM_EVAL/data/gsm8k/test.jsonl"}
+
+PRINCIPAL_RANK=${PRINCIPAL_RANK:-16}
+PRINCIPAL_RANK_SPECTRAL=${PRINCIPAL_RANK_SPECTRAL:-1}
+RANDOM_SEED=${RANDOM_SEED:-1234}
+NUM_SAMPLES=${NUM_SAMPLES:-64}
+GRID_SIZE=${GRID_SIZE:-9}
+RADIUS=${RADIUS:-0.5}
+BATCH_SIZE=${BATCH_SIZE:-4}
+MAX_LENGTH=${MAX_LENGTH:-512}
+MASK_PROMPT=${MASK_PROMPT:-0}
+USE_LOWRANK=${USE_LOWRANK:-0}
+DIRECTION_SEED=${DIRECTION_SEED:-1234}
+SHARED_DIRS=${SHARED_DIRS:-1}
+STEPS=${STEPS:-}
+
+OUT_DIR_ROOT=${OUT_DIR_ROOT:-"$PROJECT_ROOT/LLM_EVAL/eval_log"}
+OUT_DIR_ALIGNMENT=${OUT_DIR_ALIGNMENT:-"$OUT_DIR_ROOT/opra_alignment"}
+OUT_DIR_ALIGNMENT_RANDOM=${OUT_DIR_ALIGNMENT_RANDOM:-"$OUT_DIR_ROOT/opra_alignment_random"}
+OUT_DIR_ACTIVATION=${OUT_DIR_ACTIVATION:-"$OUT_DIR_ROOT/opra_activation_drift"}
+OUT_DIR_LAYERWISE=${OUT_DIR_LAYERWISE:-"$OUT_DIR_ROOT/opra_layerwise"}
+OUT_DIR_SPECTRAL=${OUT_DIR_SPECTRAL:-"$OUT_DIR_ROOT/opra_spectral_decoupling"}
+OUT_DIR_LOSS=${OUT_DIR_LOSS:-"$OUT_DIR_ROOT/opra_loss_landscape"}
+OUT_DIR_LOSS_SPECTRAL=${OUT_DIR_LOSS_SPECTRAL:-"$OUT_DIR_ROOT/opra_loss_landscape_spectral"}
+
+RUN_ALIGNMENT=${RUN_ALIGNMENT:-1}
+RUN_ALIGNMENT_RANDOM=${RUN_ALIGNMENT_RANDOM:-1}
+RUN_ACTIVATION_DRIFT=${RUN_ACTIVATION_DRIFT:-1}
+RUN_LAYERWISE=${RUN_LAYERWISE:-1}
+RUN_SPECTRAL_DECOUPLING=${RUN_SPECTRAL_DECOUPLING:-1}
+RUN_LOSS=${RUN_LOSS:-1}
+RUN_LOSS_SPECTRAL=${RUN_LOSS_SPECTRAL:-1}
+
+echo "[INFO] checkpoint_root=$CHECKPOINT_ROOT"
+if [[ -n "$BASE_MODEL" ]]; then
+  echo "[INFO] base_model=$BASE_MODEL"
+fi
+if [[ -n "$RUNS" ]]; then
+  echo "[INFO] runs=$RUNS"
+elif [[ -n "$RUN_FILTER" ]]; then
+  echo "[INFO] run_filter=$RUN_FILTER"
+fi
+
+run_step () {
+  local name="$1"
+  shift
+  echo "[INFO] ===== ${name} ====="
+  "$@"
+}
+
+if [[ "$RUN_ALIGNMENT" == "1" ]]; then
+  run_step "alignment_curve" env \
+    CHECKPOINT_ROOT="$CHECKPOINT_ROOT" \
+    BASE_MODEL="$BASE_MODEL" \
+    RUNS="$RUNS" \
+    RUN_FILTER="$RUN_FILTER" \
+    PRINCIPAL_RANK="$PRINCIPAL_RANK" \
+    OUT_DIR="$OUT_DIR_ALIGNMENT" \
+    "$SCRIPTS_DIR/run_opra_alignment_curve.sh"
+fi
+
+if [[ "$RUN_ALIGNMENT_RANDOM" == "1" ]]; then
+  run_step "alignment_curve_random" env \
+    CHECKPOINT_ROOT="$CHECKPOINT_ROOT" \
+    BASE_MODEL="$BASE_MODEL" \
+    RUNS="$RUNS" \
+    RUN_FILTER="$RUN_FILTER" \
+    PRINCIPAL_RANK="$PRINCIPAL_RANK" \
+    RANDOM_SEED="$RANDOM_SEED" \
+    OUT_DIR="$OUT_DIR_ALIGNMENT_RANDOM" \
+    "$SCRIPTS_DIR/run_opra_alignment_curve_random.sh"
+fi
+
+if [[ "$RUN_ACTIVATION_DRIFT" == "1" ]]; then
+  run_step "activation_drift" env \
+    CHECKPOINT_ROOT="$CHECKPOINT_ROOT" \
+    BASE_MODEL="$BASE_MODEL" \
+    RUNS="$RUNS" \
+    RUN_FILTER="$RUN_FILTER" \
+    PROMPT_FILE="$PROMPT_FILE_MATH" \
+    PROMPT_FIELD="$PROMPT_FIELD" \
+    PRINCIPAL_RANK="$PRINCIPAL_RANK" \
+    OUT_DIR="$OUT_DIR_ACTIVATION" \
+    "$SCRIPTS_DIR/run_opra_activation_drift.sh"
+fi
+
+if [[ "$RUN_LAYERWISE" == "1" ]]; then
+  run_step "layerwise_leakage" env \
+    CHECKPOINT_ROOT="$CHECKPOINT_ROOT" \
+    BASE_MODEL="$BASE_MODEL" \
+    RUNS="$RUNS" \
+    RUN_FILTER="$RUN_FILTER" \
+    PRINCIPAL_RANK="$PRINCIPAL_RANK" \
+    OUT_DIR="$OUT_DIR_LAYERWISE" \
+    "$SCRIPTS_DIR/run_opra_layerwise_leakage.sh"
+fi
+
+if [[ "$RUN_SPECTRAL_DECOUPLING" == "1" ]]; then
+  run_step "spectral_decoupling" env \
+    CHECKPOINT_ROOT="$CHECKPOINT_ROOT" \
+    BASE_MODEL="$BASE_MODEL" \
+    RUNS="$RUNS" \
+    RUN_FILTER="$RUN_FILTER" \
+    PROMPT_FILE="$PROMPT_FILE_MATH" \
+    PROMPT_FIELD="$PROMPT_FIELD" \
+    PRINCIPAL_RANK="$PRINCIPAL_RANK" \
+    OUT_DIR="$OUT_DIR_SPECTRAL" \
+    "$SCRIPTS_DIR/run_opra_spectral_decoupling.sh"
+fi
+
+if [[ "$RUN_LOSS" == "1" ]]; then
+  run_step "loss_landscape" env \
+    CHECKPOINT_ROOT="$CHECKPOINT_ROOT" \
+    BASE_MODEL="$BASE_MODEL" \
+    RUNS="$RUNS" \
+    RUN_FILTER="$RUN_FILTER" \
+    PROMPT_FILE="$PROMPT_FILE_GSM8K" \
+    PROMPT_FIELD="$PROMPT_FIELD" \
+    ANSWER_FIELD="$ANSWER_FIELD" \
+    NUM_SAMPLES="$NUM_SAMPLES" \
+    GRID_SIZE="$GRID_SIZE" \
+    RADIUS="$RADIUS" \
+    BATCH_SIZE="$BATCH_SIZE" \
+    MAX_LENGTH="$MAX_LENGTH" \
+    MASK_PROMPT="$MASK_PROMPT" \
+    STEPS="$STEPS" \
+    OUT_DIR="$OUT_DIR_LOSS" \
+    "$SCRIPTS_DIR/run_opra_loss_landscape.sh"
+fi
+
+if [[ "$RUN_LOSS_SPECTRAL" == "1" ]]; then
+  run_step "loss_landscape_spectral" env \
+    CHECKPOINT_ROOT="$CHECKPOINT_ROOT" \
+    BASE_MODEL="$BASE_MODEL" \
+    RUNS="$RUNS" \
+    RUN_FILTER="$RUN_FILTER" \
+    PROMPT_FILE="$PROMPT_FILE_GSM8K" \
+    PROMPT_FIELD="$PROMPT_FIELD" \
+    ANSWER_FIELD="$ANSWER_FIELD" \
+    NUM_SAMPLES="$NUM_SAMPLES" \
+    GRID_SIZE="$GRID_SIZE" \
+    RADIUS="$RADIUS" \
+    BATCH_SIZE="$BATCH_SIZE" \
+    MAX_LENGTH="$MAX_LENGTH" \
+    MASK_PROMPT="$MASK_PROMPT" \
+    PRINCIPAL_RANK="$PRINCIPAL_RANK_SPECTRAL" \
+    USE_LOWRANK="$USE_LOWRANK" \
+    DIRECTION_SEED="$DIRECTION_SEED" \
+    SHARED_DIRS="$SHARED_DIRS" \
+    STEPS="$STEPS" \
+    OUT_DIR="$OUT_DIR_LOSS_SPECTRAL" \
+    "$SCRIPTS_DIR/run_opra_loss_landscape_spectral.sh"
+fi
+
+echo "[INFO] All requested OPRA plots finished"
