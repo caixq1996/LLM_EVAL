@@ -10,8 +10,21 @@
 set -e
 set -x
 
+SUBMIT_DIR="${PBS_O_WORKDIR:-$PWD}"
+WORK_HOME_DEFAULT="${WORK_HOME:-/work/gq50/$USER}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EVAL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+EVAL_ROOT=""
+if [[ -f "${SUBMIT_DIR}/tools/run_qwen_eval_all_shared.py" ]]; then
+  EVAL_ROOT="${SUBMIT_DIR}"
+elif [[ -f "${SUBMIT_DIR}/project/LLM_EVAL/tools/run_qwen_eval_all_shared.py" ]]; then
+  EVAL_ROOT="${SUBMIT_DIR}/project/LLM_EVAL"
+elif [[ -f "${WORK_HOME_DEFAULT}/project/LLM_EVAL/tools/run_qwen_eval_all_shared.py" ]]; then
+  EVAL_ROOT="${WORK_HOME_DEFAULT}/project/LLM_EVAL"
+elif [[ "${SCRIPT_DIR}" != /var/spool/pbs/* ]]; then
+  EVAL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  EVAL_ROOT="${SUBMIT_DIR}"
+fi
 
 # -------------------------------------------------------
 # CLI flags (match run_eval_all.sh behavior)
@@ -55,7 +68,15 @@ if [[ -n "${RUN_EVAL_SUBMITTED:-}" ]]; then
 else
   _LOG_BASE="${EVAL_ROOT}/eval_log/eval_all/miyabi_main"
 fi
-mkdir -p "${_LOG_BASE}" "${EVAL_ROOT}/eval_log/eval_all/eval_gpus"
+if ! mkdir -p "${_LOG_BASE}" "${EVAL_ROOT}/eval_log/eval_all/eval_gpus" 2>/dev/null; then
+  echo "[WARN] Cannot write logs under ${EVAL_ROOT}; fallback to ${SUBMIT_DIR}"
+  if [[ -n "${RUN_EVAL_SUBMITTED:-}" ]]; then
+    _LOG_BASE="${SUBMIT_DIR}/eval_log/eval_all/miyabi_qsub"
+  else
+    _LOG_BASE="${SUBMIT_DIR}/eval_log/eval_all/miyabi_main"
+  fi
+  mkdir -p "${_LOG_BASE}" "${SUBMIT_DIR}/eval_log/eval_all/eval_gpus"
+fi
 
 if [[ -n "${SUB_EXP_NAME:-}" ]]; then
   _EXP_TAG="${SUB_EXP_NAME}"

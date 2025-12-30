@@ -97,6 +97,54 @@
       "beta_target_log": 0.202,
       "beta_actual_log": 0.155517578125,
       "tau_log": -0.24419137835502625
+    },
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.4285714285714286,
+      "tau": -0.13166272001607077,
+      "kept": 1722,
+      "dropped": 2296,
+      "beta_actual": 0.42857142857142855,
+      "sigma_kept": 4.068355713776237e-05,
+      "vprob_kept": 7.10487284666912e-06,
+      "gbar_norm2_kept": 1.6428363479181925e-07,
+      "sigma_full": 6.872490205909767e-05,
+      "vprob_full": 1.2071601631165526e-05,
+      "gbar_norm2_full": 3.7617598597032745e-07,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 53.8,
+        "8": 78.9
+      },
+      "pass_at_k_dropped": {
+        "1": 32.8,
+        "8": 62.0
+      },
+      "pass_at_k_full": {
+        "1": 41.8,
+        "8": 69.2
+      },
+      "valid_counts_kept": {
+        "1": 1722,
+        "8": 1722
+      },
+      "valid_counts_dropped": {
+        "1": 2296,
+        "8": 2296
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 100,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
     }
   ],
   "baseline_by_step": {

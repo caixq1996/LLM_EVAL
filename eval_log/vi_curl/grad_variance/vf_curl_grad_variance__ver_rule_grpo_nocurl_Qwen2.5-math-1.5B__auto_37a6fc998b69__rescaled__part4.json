@@ -41,8 +41,27 @@
     "compute_passk": true,
     "data_name": "deepscaler",
     "answer_field": "answer",
-    "passk_ks": "1,8"
+    "passk_ks": "1,8",
+    "beta_schedule_mode": "rescaled",
+    "beta_ref_steps": [
+      20,
+      40,
+      60,
+      80,
+      100,
+      120,
+      140,
+      160,
+      180,
+      200,
+      220,
+      240,
+      260,
+      280,
+      300
+    ]
   },
+  "title": "ver_rule_grpo_nocurl_Qwen2.5-math-1.5B",
   "steps": [
     100,
     260
@@ -95,7 +114,55 @@
       "beta_target_log": null,
       "beta_actual_log": null,
       "tau_log": null
+    },
+    {
+      "world_size": 4,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.8857142857142857,
+      "tau": -0.19820534288883207,
+      "kept": 3558,
+      "dropped": 460,
+      "beta_actual": 0.885515181682429,
+      "sigma_kept": 5.036517705788915e-05,
+      "vprob_kept": 8.550948594662643e-06,
+      "gbar_norm2_kept": 1.5879041883173864e-07,
+      "sigma_full": 5.8396320696204694e-05,
+      "vprob_full": 9.933723758936773e-06,
+      "gbar_norm2_full": 2.0836501551198968e-07,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 47.0,
+        "8": 72.7
+      },
+      "pass_at_k_dropped": {
+        "1": 22.3,
+        "8": 51.5
+      },
+      "pass_at_k_full": {
+        "1": 44.2,
+        "8": 70.2
+      },
+      "valid_counts_kept": {
+        "1": 3558,
+        "8": 3558
+      },
+      "valid_counts_dropped": {
+        "1": 460,
+        "8": 460
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 260,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
     }
   ],
-  "baseline_by_step": {}
+  "baseline_rows": null
 }
