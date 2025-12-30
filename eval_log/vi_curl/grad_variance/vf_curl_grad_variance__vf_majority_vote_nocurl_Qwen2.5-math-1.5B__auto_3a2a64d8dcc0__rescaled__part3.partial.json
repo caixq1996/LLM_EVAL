@@ -97,6 +97,54 @@
       "beta_target_log": null,
       "beta_actual_log": null,
       "tau_log": null
+    },
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.6000000000000001,
+      "tau": -0.14034102857112885,
+      "kept": 2411,
+      "dropped": 1607,
+      "beta_actual": 0.6000497760079642,
+      "sigma_kept": 4.113036940563446e-05,
+      "vprob_kept": 6.995704875350588e-06,
+      "gbar_norm2_kept": 1.3556226105447245e-07,
+      "sigma_full": 6.138308001130091e-05,
+      "vprob_full": 1.0340519605584597e-05,
+      "gbar_norm2_full": 2.477589404863563e-07,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 54.0,
+        "8": 78.3
+      },
+      "pass_at_k_dropped": {
+        "1": 30.6,
+        "8": 58.6
+      },
+      "pass_at_k_full": {
+        "1": 44.6,
+        "8": 70.4
+      },
+      "valid_counts_kept": {
+        "1": 2411,
+        "8": 2411
+      },
+      "valid_counts_dropped": {
+        "1": 1607,
+        "8": 1607
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 160,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
     }
   ],
   "baseline_by_step": {}
