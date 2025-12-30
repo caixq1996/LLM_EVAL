@@ -97,5 +97,23 @@
       "tau_log": null
     }
   ],
-  "baseline_by_step": {}
+  "baseline_by_step": {
+    "40": {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.2571428571428572,
+      "tau": -0.16115659645625524,
+      "kept": 1033,
+      "dropped": 2985,
+      "beta_actual": 0.257093081134893,
+      "sigma_kept": 4.460875416334109e-05,
+      "vprob_kept": 7.73336049098329e-06,
+      "gbar_norm2_kept": 3.480046831138376e-07,
+      "sigma_full": 8.326282370425424e-05,
+      "vprob_full": 1.483333221265724e-05,
+      "gbar_norm2_full": 1.420876494060857e-06,
+      "step": 40
+    }
+  }
 }

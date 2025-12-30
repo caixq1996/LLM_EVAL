@@ -142,6 +142,7 @@ if [[ -z "${PBS_JOBID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_SUBMIT}
              -l "walltime=${MIYABI_WALLTIME}" \
              -W "group_list=${MIYABI_GROUP}" \
              -v RUN_EVAL_SUBMITTED=1 \
+             -v SKIP_BASE_EVAL=true \
              -v MODEL_ROOT="${subdir}" \
              -v EXP_NAMES="${EXP_NAMES}" \
              -v SUB_EXP_NAME="${sub_name}" \
@@ -179,6 +180,10 @@ fi
 # -------------------------------------------------------
 cd "${PBS_O_WORKDIR:-$EVAL_ROOT}"
 mkdir -p "${OUT_ROOT}"
+
+if [[ -n "${SUB_EXP_NAME:-}" && -z "${SKIP_BASE_EVAL_OVERRIDE:-}" ]]; then
+  SKIP_BASE_EVAL="true"
+fi
 
 NODE_LIST_FILE="${OUT_ROOT}/node_list.txt"
 if [[ -n "${PBS_NODEFILE:-}" && -f "${PBS_NODEFILE}" ]]; then
