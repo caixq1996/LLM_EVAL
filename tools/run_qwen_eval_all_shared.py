@@ -553,6 +553,7 @@ def main():
     ap.add_argument('--n_sampling_g2', type=int, default=1)
     ap.add_argument('--per_model_timeout', type=int, default=0, help='每个模型评测的最大时长（秒）')
     ap.add_argument('--skip_base_eval', action='store_true', help='跳过 base 模型评测')
+    ap.add_argument('--skip_step_eval', action='store_true', help='跳过 global_step 评测（仅跑 base）')
     ap.add_argument('--cleanup_exported', action='store_true', help='评测完成后删除导出的 HF 目录')
     ap.add_argument('--_one_model_worker', action='store_true', help=argparse.SUPPRESS)
     ap.add_argument('--_worker_payload', type=str, default='', help=argparse.SUPPRESS)
@@ -677,10 +678,13 @@ def main():
                         print(f'[{_now()}] ⏭ 跳过 base-only：{base_key}', flush=True)
                 base_done[base_key] = True
             
-            # 单 run 目录模式: runs 已经是 global_step_* 目录列表，直接使用
-            # 多 run 目录模式: run 是 run_name 目录，需要在其下查找 global_step_*
-            if is_single_run:
-                step_dirs = [run]  # run 本身就是 step_dir
+        if args.skip_step_eval:
+            continue
+
+        # 单 run 目录模式: runs 已经是 global_step_* 目录列表，直接使用
+        # 多 run 目录模式: run 是 run_name 目录，需要在其下查找 global_step_*
+        if is_single_run:
+            step_dirs = [run]  # run 本身就是 step_dir
             else:
                 step_dirs = list_step_dirs(run, only_latest=False)
             

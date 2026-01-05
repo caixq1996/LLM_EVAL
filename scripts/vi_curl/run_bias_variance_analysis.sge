@@ -1,0 +1,456 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -jc gtn-container_g8.24h
+#$ -ac d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=256g
+#$ -j y
+
+set -x
+
+# ==============================================================================
+# Bias-Variance Analysis Script (Full Integration)
+#
+# This script runs the bias-variance analysis with all features from 
+# run_vi_curl_eval_all.sge, including multi-submit mode for parallel processing.
+#
+# Usage:
+#   ./run_bias_variance_analysis.sge [options]
+#
+# Options:
+#   --submit          Submit single job to scheduler
+#   --multi-submit    Submit separate jobs for each model subdirectory
+#   --collect         Run data collection (requires GPUs)
+#   --plot-only       Skip collection, only generate plots
+#   --keep-hf-export  Keep HF export files after run
+#   --no-skip-nocurl  Also process nocurl runs in multi-submit mode
+# ==============================================================================
+
+# SCRIPT_DIR for local runs; qsub copies script to temp dir
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Prefer exported EVAL_ROOT (from multi-submit), else infer from SCRIPT_DIR
+if [[ -z "${EVAL_ROOT:-}" ]]; then
+  EVAL_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
+# Validate EVAL_ROOT, fallback to default
+if [[ ! -d "${EVAL_ROOT}/scripts/vi_curl" ]]; then
+  EVAL_ROOT="${HOME}/project/LLM_EVAL"
+fi
+cd "${EVAL_ROOT}"
+
+PROJECT_NAME="VI-CURL-BiasVar"
+EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
+
+# -------------------------------------------------------
+# Parse command line arguments
+# -------------------------------------------------------
+KEEP_HF_EXPORT="${KEEP_HF_EXPORT:-false}"
+RUN_SUBMIT="${RUN_SUBMIT:-false}"
+RUN_MULTI_SUBMIT="${RUN_MULTI_SUBMIT:-false}"
+SKIP_NOCURL_SUBMIT="${SKIP_NOCURL_SUBMIT:-true}"
+RUN_COLLECT="${RUN_COLLECT:-true}"
+PLOT_ONLY="${PLOT_ONLY:-false}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --submit)
+      RUN_SUBMIT="true"
+      shift
+      ;;
+    --multi-submit)
+      RUN_MULTI_SUBMIT="true"
+      RUN_SUBMIT="true"
+      shift
+      ;;
+    --keep-hf-export)
+      KEEP_HF_EXPORT="true"
+      shift
+      ;;
+    --no-skip-nocurl)
+      SKIP_NOCURL_SUBMIT="false"
+      shift
+      ;;
+    --collect)
+      RUN_COLLECT="true"
+      PLOT_ONLY="false"
+      shift
+      ;;
+    --plot-only)
+      PLOT_ONLY="true"
+      RUN_COLLECT="false"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+# =======================================================
+# Log directory setup
+# =======================================================
+export TZ='JST-9'
+_TS="$(date +%Y%m%d_%H%M%S)"
+
+if [[ -n "${RUN_SUBMITTED:-}" ]]; then
+  _LOG_BASE="${EVAL_ROOT}/eval_log/vi_curl/bias_variance_logs/qsub_submit"
+else
+  _LOG_BASE="${EVAL_ROOT}/eval_log/vi_curl/bias_variance_logs/main"
+fi
+mkdir -p "${_LOG_BASE}"
+
+# Log file naming: prefer SUB_EXP_NAME (multi-submit subtask)
+if [[ -n "${SUB_EXP_NAME:-}" ]]; then
+  _EXP_TAG="${SUB_EXP_NAME}"
+else
+  _EXP_TAG="${EXP_NAMES:-default}"
+fi
+_MAIN_LOG="${_LOG_BASE}/run_bias_variance.${_TS}.${_EXP_TAG}.log"
+echo "[INFO] Main script log: ${_MAIN_LOG}"
+
+# Tee output to both terminal and log file
+exec > >(tee -a "${_MAIN_LOG}") 2>&1
+
+# =======================================================
+# Multi-submit mode: submit separate job for each MODEL_ROOT subdirectory
+# =======================================================
+if [[ -z "${JOB_ID:-}" && -z "${RUN_SUBMITTED:-}" && "${RUN_MULTI_SUBMIT:-false}" == "true" && "${RUN_SUBMIT:-0}" == "true" ]]; then
+  _MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
+  
+  if [[ ! -d "$_MODEL_ROOT" ]]; then
+    echo "[ERROR] MODEL_ROOT not found: $_MODEL_ROOT"
+    exit 1
+  fi
+  
+  SUBDIRS=()
+  while IFS= read -r -d '' dir; do
+    base_dir="$(basename "$dir")"
+    if [[ "${SKIP_NOCURL_SUBMIT}" == "true" && "${base_dir}" == *"_nocurl_"* ]]; then
+      continue
+    fi
+    SUBDIRS+=("$dir")
+  done < <(find "$_MODEL_ROOT" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+  
+  if [[ ${#SUBDIRS[@]} -eq 0 ]]; then
+    echo "[WARN] No subdirectories found under $_MODEL_ROOT, falling back to single submit."
+  else
+    SCHEDULER_TOOL="${SCHEDULER_TOOL:-$HOME/tools/qsub_gpu_scheduler_p90.sh}"
+    if [ ! -f "$SCHEDULER_TOOL" ]; then
+      echo "[ERROR] Scheduler tool not found: $SCHEDULER_TOOL"
+      exit 1
+    fi
+    source "$SCHEDULER_TOOL"
+    
+    echo "[INFO] Multi-submit mode: found ${#SUBDIRS[@]} subdirectories under $_MODEL_ROOT"
+    
+    for subdir in "${SUBDIRS[@]}"; do
+      sub_name="$(basename "$subdir")"
+      job_tag="${sub_name//[^A-Za-z0-9_]/_}"
+      job_tag="${job_tag:0:60}"
+      job_name="BV_${PROJECT_NAME}_${job_tag}"
+      job_name="${job_name//[^A-Za-z0-9_]/_}"
+      job_name="${job_name:0:120}"
+      
+      read -r jc_base n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$job_name")
+      jc_full="$(full_jclass_from_base "$jc_base")"
+      
+      echo "[INFO] Submitting: ${job_name} (MODEL_ROOT=${subdir})"
+      qsub -N "$job_name" \
+           -jc "$jc_full" \
+           -v NUM_GPUS="${n_gpus}" \
+           -v MODEL_ROOT="${subdir}" \
+           -v EXP_NAMES="${EXP_NAMES}" \
+           -v SUB_EXP_NAME="${sub_name}" \
+           -v RUN_SUBMITTED=1 \
+           -v KEEP_HF_EXPORT="${KEEP_HF_EXPORT}" \
+           -v EVAL_ROOT="${EVAL_ROOT}" \
+           -v RUN_COLLECT="${RUN_COLLECT}" \
+           -v PLOT_ONLY="${PLOT_ONLY}" \
+           -V \
+           "$0"
+    done
+    
+    echo "[INFO] Submitted ${#SUBDIRS[@]} jobs."
+    exit 0
+  fi
+fi
+
+# =======================================================
+# Single-submit mode
+# =======================================================
+if [[ -z "${JOB_ID:-}" && -z "${RUN_SUBMITTED:-}" && "${RUN_SUBMIT:-false}" == "true" ]]; then
+  SCHEDULER_TOOL="${SCHEDULER_TOOL:-$HOME/tools/qsub_gpu_scheduler_p90.sh}"
+  if [ ! -f "$SCHEDULER_TOOL" ]; then
+    echo "[ERROR] Scheduler tool not found: $SCHEDULER_TOOL"
+    exit 1
+  fi
+  source "$SCHEDULER_TOOL"
+
+  job_tag="${EXP_NAMES//[^A-Za-z0-9_]/_}"
+  job_tag="${job_tag:0:60}"
+  job_name="BV_${PROJECT_NAME}_${job_tag}"
+  job_name="${job_name//[^A-Za-z0-9_]/_}"
+  job_name="${job_name:0:120}"
+
+  read -r jc_base n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$job_name")
+  jc_full="$(full_jclass_from_base "$jc_base")"
+
+  echo "[INFO] Submitting bias-variance job: name=${job_name} jc=${jc_full} n_gpus=${n_gpus}"
+  qsub -N "$job_name" \
+       -jc "$jc_full" \
+       -v NUM_GPUS="${n_gpus}" \
+       -v RUN_SUBMITTED=1 \
+       -v KEEP_HF_EXPORT="${KEEP_HF_EXPORT}" \
+       -v EVAL_ROOT="${EVAL_ROOT}" \
+       -v RUN_COLLECT="${RUN_COLLECT}" \
+       -v PLOT_ONLY="${PLOT_ONLY}" \
+       -V \
+       "$0"
+  exit 0
+fi
+
+# =======================================================
+# Execution logic (runs on compute node)
+# =======================================================
+export PYTHONUNBUFFERED=1
+export TORCH_CPP_LOG_LEVEL=ERROR
+export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+
+# Detect GPU count
+if [[ -z "${NUM_GPUS:-}" ]]; then
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    NUM_GPUS=$(nvidia-smi --list-gpus | grep -c '^GPU')
+    [[ "${NUM_GPUS}" -ge 1 ]] || NUM_GPUS=1
+  else
+    NUM_GPUS=1
+  fi
+fi
+
+PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
+
+# -----------------------------
+# Shared config (passk + gradvar)
+# -----------------------------
+MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_*_curl_*}"
+
+PROMPT_FILE="${PROMPT_FILE:-${EVAL_ROOT}/data/deepscaler/train.jsonl}"
+PROMPT_FIELD="${PROMPT_FIELD:-problem}"
+ANSWER_FIELD="${ANSWER_FIELD:-answer}"
+DATA_NAME="${DATA_NAME:-deepscaler}"
+PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
+
+MAX_PROMPT_LEN="${MAX_PROMPT_LEN:-512}"
+NUM_PROMPTS="${NUM_PROMPTS:-0}"
+NUM_PROMPT_RATIO="${NUM_PROMPT_RATIO:-0.1}"
+SUBSET_MODE="${SUBSET_MODE:-random}"
+SEED="${SEED:-42}"
+
+K_ROLLOUTS="${K_ROLLOUTS:-8}"
+TARGET_KS="${TARGET_KS:-1,8}"
+COMPUTE_PASSK="${COMPUTE_PASSK:-true}"
+PASSK_KS="${PASSK_KS:-${TARGET_KS}}"
+MAX_RESPONSE_LEN="${MAX_RESPONSE_LEN:-3072}"
+MAX_TOKENS="${MAX_TOKENS:-${MAX_RESPONSE_LEN}}"
+TEMPERATURE="${TEMPERATURE:-0.6}"
+TOP_P="${TOP_P:-0.95}"
+GEN_BATCH_SIZE="${GEN_BATCH_SIZE:-512}"
+
+CONF_METRIC="${CONF_METRIC:-neg_entropy}"
+ENTROPY_TOPK="${ENTROPY_TOPK:-32}"
+TOKENIZER_DIR="${TOKENIZER_DIR:-}"
+
+START_BETA="${START_BETA:-0.2}"
+END_BETA="${END_BETA:-1.0}"
+SCHEDULE_STEPS="${SCHEDULE_STEPS:-313}"
+BETA_SCHEDULE_MODE="${BETA_SCHEDULE_MODE:-rescaled}"   # train | rescaled
+BETA_REF_STEPS="${BETA_REF_STEPS:-20-313:20}"
+BETA_SOURCE="${BETA_SOURCE:-log}"                      # compute | log
+BETA_LOG_PATH="${BETA_LOG_PATH:-}"
+BETA_LOG_ROOT="${BETA_LOG_ROOT:-${EVAL_ROOT}/../VI-CURL/wandb}"
+USE_LOG_TAU="${USE_LOG_TAU:-true}"
+
+STEPS="${STEPS:-}"
+
+USE_VLLM="${USE_VLLM:-true}"
+WORK_HOME_BASE="${WORK_HOME:-/data/giil/caixq}"
+KEEP_HF_EXPORT="${KEEP_HF_EXPORT:-false}"
+if [[ -z "${HF_EXPORT_ROOT:-}" ]]; then
+  if [[ "${KEEP_HF_EXPORT}" == "true" ]]; then
+    HF_EXPORT_ROOT="${WORK_HOME_BASE}/export"
+  else
+    if [[ -d /dev/shm ]] && [[ -w /dev/shm ]]; then
+      HF_EXPORT_ROOT="/dev/shm/vi_curl_biasvar_export"
+    else
+      HF_EXPORT_ROOT="${WORK_HOME_BASE}/export"
+    fi
+  fi
+fi
+BASE_MODEL_DIR="${BASE_MODEL_DIR:-}"
+EXPORT_HF_IF_NEEDED="${EXPORT_HF_IF_NEEDED:-true}"
+VLLM_TP="${VLLM_TP:-1}"
+VLLM_PP="${VLLM_PP:-1}"
+VLLM_GPU_MEM_UTIL="${VLLM_GPU_MEM_UTIL:-0.90}"
+VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-0}"
+
+# -----------------------------
+# Grad-variance specific config
+# -----------------------------
+SAMPLING_MODE="${SAMPLING_MODE:-topk}"   # topk | full
+PROB_MODE="${PROB_MODE:-full}"           # topk | full
+PROJ_DIM="${PROJ_DIM:-256}"
+TOPK="${TOPK:-${ENTROPY_TOPK}}"
+SHARD_LOAD_WORKERS="${SHARD_LOAD_WORKERS:-4}"
+EMPTY_CACHE_EACH_BATCH="${EMPTY_CACHE_EACH_BATCH:-false}"
+INFERENCE_MODE="${INFERENCE_MODE:-true}"
+ENABLE_TF32="${ENABLE_TF32:-true}"
+BATCH_VAR_SEEDS="${BATCH_VAR_SEEDS:-}"
+BATCH_VAR_NUM_PROMPTS="${BATCH_VAR_NUM_PROMPTS:-128}"
+BATCH_VAR_K="${BATCH_VAR_K:-1}"
+BASELINE_MODE="${BASELINE_MODE:-auto}"   # auto | none
+
+# -----------------------------
+# Output/log dirs (NEW: separate from original grad_variance)
+# -----------------------------
+GRAD_OUT_DIR="${GRAD_OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_bias_variance}"
+GRAD_LOG_DIR="${GRAD_LOG_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_bias_variance_logs}"
+GRAD_AUTO_MERGE_PARTS="${GRAD_AUTO_MERGE_PARTS:-true}"
+GRAD_MERGE_DELETE_PARTS="${GRAD_MERGE_DELETE_PARTS:-false}"
+GRAD_MERGE_ONLY="${GRAD_MERGE_ONLY:-false}"
+GRAD_TAG="${GRAD_TAG:-}"
+PLOT_BASELINE_FULL_ONLY="${PLOT_BASELINE_FULL_ONLY:-true}"
+
+PLOT_OUT_DIR="${PLOT_OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/bias_variance_plots}"
+FIGURES_DIR="${FIGURES_DIR:-${HOME}/works/RLVR/VI-CURL/figures}"
+
+mkdir -p "${GRAD_OUT_DIR}"
+mkdir -p "${GRAD_LOG_DIR}"
+mkdir -p "${PLOT_OUT_DIR}"
+
+echo "[INFO] Job started at $(date). Detected ${NUM_GPUS} GPUs."
+echo "[INFO] MODEL_ROOT=${MODEL_ROOT}"
+echo "[INFO] PROMPT_FILE=${PROMPT_FILE} (field=${PROMPT_FIELD}, type=${PROMPT_TYPE})"
+echo "[INFO] GRAD_OUT_DIR=${GRAD_OUT_DIR}"
+echo "[INFO] PLOT_OUT_DIR=${PLOT_OUT_DIR}"
+
+# -----------------------------
+# /dev/shm HF export cleanup function
+# Only cleans HF_EXPORT_ROOT if in /dev/shm
+# -----------------------------
+cleanup_shm_hf_export() {
+  local reason="$1"
+  if [[ "${HF_EXPORT_ROOT}" == /dev/shm/* ]] && [[ -d "${HF_EXPORT_ROOT}" ]]; then
+    echo "[INFO] ${reason}: Cleaning /dev/shm HF export dir: ${HF_EXPORT_ROOT}"
+    rm -rf "${HF_EXPORT_ROOT}"
+    echo "[INFO] Cleanup complete"
+  fi
+}
+
+# Clean old HF exports before run
+cleanup_shm_hf_export "Pre-run"
+
+# -----------------------------
+# Run grad-variance with bias metrics
+# -----------------------------
+run_gradvar() {
+  echo "[INFO] === Running grad-variance with bias metrics ==="
+  (
+    export NUM_GPUS
+    export MODEL_ROOT PROMPT_FILE PROMPT_FIELD PROMPT_TYPE
+    export COMPUTE_PASSK DATA_NAME ANSWER_FIELD PASSK_KS
+    export MAX_PROMPT_LEN NUM_PROMPTS NUM_PROMPT_RATIO SUBSET_MODE SEED
+    export K_ROLLOUTS MAX_TOKENS TEMPERATURE TOP_P GEN_BATCH_SIZE
+    export SAMPLING_MODE PROB_MODE PROJ_DIM TOPK CONF_METRIC
+    export START_BETA END_BETA SCHEDULE_STEPS BETA_SCHEDULE_MODE BETA_REF_STEPS BETA_SOURCE BETA_LOG_PATH BETA_LOG_ROOT USE_LOG_TAU
+    export TOKENIZER_DIR
+    export STEPS
+    export SHARD_LOAD_WORKERS EMPTY_CACHE_EACH_BATCH INFERENCE_MODE ENABLE_TF32
+    export BATCH_VAR_SEEDS BATCH_VAR_NUM_PROMPTS BATCH_VAR_K
+    export BASELINE_MODE
+    export PLOT_BASELINE_FULL_ONLY
+    export USE_VLLM WORK_HOME KEEP_HF_EXPORT HF_EXPORT_ROOT BASE_MODEL_DIR EXPORT_HF_IF_NEEDED VLLM_TP VLLM_PP VLLM_GPU_MEM_UTIL VLLM_MAX_NUM_SEQS
+    export OUT_DIR="${GRAD_OUT_DIR}"
+    export LOG_DIR="${GRAD_LOG_DIR}"
+    export AUTO_MERGE_PARTS="${GRAD_AUTO_MERGE_PARTS}"
+    export MERGE_DELETE_PARTS="${GRAD_MERGE_DELETE_PARTS}"
+    export MERGE_ONLY="${GRAD_MERGE_ONLY}"
+    if [[ -n "${GRAD_TAG}" ]]; then
+      export TAG="${GRAD_TAG}"
+    else
+      unset TAG
+    fi
+    bash "${EVAL_ROOT}/scripts/vi_curl/run_vi_curl_grad_variance_all.sge"
+  )
+}
+
+# -----------------------------
+# Run plot generation
+# -----------------------------
+run_plots() {
+  echo "[INFO] === Generating bias-variance plots ==="
+  
+  "${PYTHON_BIN}" "${EVAL_ROOT}/tools/plot_bias_variance.py" \
+    --grad_variance_dir "${GRAD_OUT_DIR}" \
+    --out_dir "${PLOT_OUT_DIR}" \
+    --paper_figure
+  
+  # Copy key figures to paper directory
+  if [[ -d "${FIGURES_DIR}" ]]; then
+    echo "[INFO] Copying figures to ${FIGURES_DIR}"
+    
+    # Copy paper figures
+    for f in "${PLOT_OUT_DIR}"/bias_variance_paper_figure_*.pdf; do
+      if [[ -f "$f" ]]; then
+        cp -v "$f" "${FIGURES_DIR}/"
+      fi
+    done
+    
+    # Copy model-specific figures with LaTeX-friendly names
+    for model in "qwen" "deepseek"; do
+      for f in "${PLOT_OUT_DIR}"/*"${model}"*.pdf; do
+        if [[ -f "$f" ]]; then
+          base="$(basename "$f")"
+          if [[ "$base" == *"combined"* ]]; then
+            if [[ "$model" == "qwen" ]]; then
+              cp -v "$f" "${FIGURES_DIR}/bias_variance_qwen.pdf"
+            elif [[ "$model" == "deepseek" ]]; then
+              cp -v "$f" "${FIGURES_DIR}/bias_variance_deepseek.pdf"
+            fi
+          fi
+          if [[ "$base" == *"bias_vs_beta"* ]]; then
+            if [[ "$model" == "qwen" ]]; then
+              cp -v "$f" "${FIGURES_DIR}/bias_vs_beta_qwen.pdf"
+            elif [[ "$model" == "deepseek" ]]; then
+              cp -v "$f" "${FIGURES_DIR}/bias_vs_beta_deepseek.pdf"
+            fi
+          fi
+          if [[ "$base" == *"variance_ratio_with_bias"* ]]; then
+            if [[ "$model" == "qwen" ]]; then
+              cp -v "$f" "${FIGURES_DIR}/variance_ratio_with_bias_qwen.pdf"
+            elif [[ "$model" == "deepseek" ]]; then
+              cp -v "$f" "${FIGURES_DIR}/variance_ratio_with_bias_deepseek.pdf"
+            fi
+          fi
+        fi
+      done
+    done
+  fi
+}
+
+# -----------------------------
+# Main execution
+# -----------------------------
+if [[ "${PLOT_ONLY}" == "true" ]]; then
+  echo "[INFO] Plot-only mode: skipping data collection"
+else
+  if [[ "${RUN_COLLECT}" == "true" ]]; then
+    run_gradvar
+  fi
+fi
+
+run_plots
+
+# Cleanup /dev/shm HF exports after run (if not keeping)
+if [[ "${KEEP_HF_EXPORT}" != "true" ]]; then
+  cleanup_shm_hf_export "Post-run"
+fi
+
+echo "[INFO] Done at $(date)."

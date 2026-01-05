@@ -78,6 +78,9 @@ except Exception:
 
 _STEP_RE = re.compile(r"global_step_(\d+)$")
 _NUM_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$")
+_PLOT_LABEL_SIZE = 14
+_PLOT_TICK_SIZE = 12
+_PLOT_LEGEND_SIZE = 12
 
 
 def _step_num_from_dir(p: Path) -> int:
@@ -697,7 +700,7 @@ def _plot_passk(
     ks: Sequence[int],
     out_path: Path,
     title: str,
-) -> None:
+) -> List[Path]:
     def _coerce_float(value: Any) -> float:
         if value is None:
             return float("nan")
@@ -714,13 +717,11 @@ def _plot_passk(
         return float("nan")
 
     steps_arr = np.array(list(steps), dtype=np.int64)
-    n_rows = len(ks) + 1
-    fig, axes = plt.subplots(n_rows, 1, figsize=(10, max(3 * n_rows, 6)), sharex=True)
-    if n_rows == 1:
-        axes = [axes]
+    out_path = Path(out_path)
+    out_base = out_path.with_suffix("") if out_path.suffix else out_path
+    saved: List[Path] = []
 
-    for idx, k in enumerate(ks):
-        ax = axes[idx]
+    for k in ks:
         kept = []
         dropped = []
         for r in rows:
@@ -728,13 +729,24 @@ def _plot_passk(
             drop_val = r["pass_at_k_dropped"].get(str(k))
             kept.append(_coerce_float(kept_val))
             dropped.append(_coerce_float(drop_val))
+
+        fig, ax = plt.subplots(figsize=(10, 4))
         ax.plot(steps_arr, kept, marker="o", label="Kept")
         ax.plot(steps_arr, dropped, marker="o", label="Dropped")
-        ax.set_ylabel(f"Pass@{k} (%)")
-        ax.legend(loc="best")
-        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.set_ylabel(f"Pass@{k} (%)", fontsize=_PLOT_LABEL_SIZE)
+        ax.set_xlabel("training steps", fontsize=_PLOT_LABEL_SIZE)
+        ax.tick_params(axis="both", labelsize=_PLOT_TICK_SIZE)
+        ax.legend(loc="best", fontsize=_PLOT_LEGEND_SIZE)
+        ax.grid(True, linestyle="--", alpha=0.3)
 
-    ax = axes[-1]
+        out_k = out_base.parent / f"{out_base.name}__passk{k}.pdf"
+        out_k.parent.mkdir(parents=True, exist_ok=True)
+        fig.tight_layout()
+        fig.savefig(out_k, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        saved.append(out_k)
+
+    fig, ax = plt.subplots(figsize=(10, 3.6))
     use_beta_log = any(r.get("beta_target_log") is not None for r in rows)
     use_actual_log = any(r.get("beta_actual_log") is not None for r in rows)
     if use_beta_log:
@@ -747,17 +759,21 @@ def _plot_passk(
         beta_a = [_pick_value(r, "beta_actual") for r in rows]
     ax.plot(steps_arr, beta_t, color="#e67e22", label="beta_target (log)" if use_beta_log else "beta_target")
     ax.plot(steps_arr, beta_a, color="#3498db", label="beta_actual (log)" if use_actual_log else "beta_actual", linestyle="--")
-    ax.set_ylabel("Beta")
-    ax.set_xlabel("Training step")
+    ax.set_ylabel("Beta", fontsize=_PLOT_LABEL_SIZE)
+    ax.set_xlabel("training steps", fontsize=_PLOT_LABEL_SIZE)
+    ax.tick_params(axis="both", labelsize=_PLOT_TICK_SIZE)
     ax.set_ylim(0.0, 1.05)
-    ax.legend(loc="best")
-    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend(loc="best", fontsize=_PLOT_LEGEND_SIZE)
+    ax.grid(True, linestyle="--", alpha=0.3)
 
-    fig.suptitle(title)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout(rect=[0, 0.02, 1, 0.97])
-    plt.savefig(out_path, dpi=200)
+    out_beta = out_base.parent / f"{out_base.name}__beta.pdf"
+    out_beta.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(out_beta, dpi=200, bbox_inches="tight")
     plt.close(fig)
+    saved.append(out_beta)
+
+    return saved
 
 
 def _default_tag(obj: Dict[str, Any]) -> str:
@@ -1000,7 +1016,7 @@ def main() -> None:
     tag = str(args.tag).strip() or _default_tag(config)
     suffix = f"__part{int(args.part_id)}" if int(args.num_parts) > 1 else ""
     out_json = out_dir / f"vi_curl_passk__{run_name}__{tag}{suffix}.json"
-    out_png = out_dir / f"vi_curl_passk__{run_name}__{tag}{suffix}.png"
+    out_base = out_dir / f"vi_curl_passk__{run_name}__{tag}{suffix}"
 
     rows_by_step: Dict[int, Dict[str, Any]] = {}
     if bool(args.resume) and out_json.exists():
@@ -1129,8 +1145,9 @@ def main() -> None:
 
     if not bool(args.no_plot):
         title = f"{run_name} kept vs dropped pass@k"
-        _plot_passk(steps=steps_sorted, rows=rows_sorted, ks=ks, out_path=out_png, title=title)
-        print(f"[OK] Plot saved: {out_png}")
+        saved = _plot_passk(steps=steps_sorted, rows=rows_sorted, ks=ks, out_path=out_base, title=title)
+        for p in saved:
+            print(f"[OK] Plot saved: {p}")
 
 
 if __name__ == "__main__":

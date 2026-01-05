@@ -1,9 +1,9 @@
 {
-  "analysis_id": "2473eb01cda8",
+  "analysis_id": "f0be9291d9b6",
   "engine": "vllm",
   "tag": "auto_c2bd7a1e4a61__rescaled",
   "part_id": 1,
-  "num_parts": 8,
+  "num_parts": 4,
   "config": {
     "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_curl_Qwen2.5-math-1.5B",
     "baseline_run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/ver_rule_grpo_nocurl_Qwen2.5-math-1.5B",
@@ -34,7 +34,7 @@
     "beta_log_root": "/home/caixq/project/LLM_EVAL/../VI-CURL/wandb",
     "use_log_tau": true,
     "gen_batch_size": 512,
-    "steps": "40,200",
+    "steps": "40,120,200,280",
     "batch_var_seeds": null,
     "batch_var_num_prompts": 128,
     "batch_var_k": 1,
@@ -45,7 +45,9 @@
   },
   "steps": [
     40,
-    200
+    120,
+    200,
+    280
   ],
   "rows": [
     {
@@ -54,38 +56,38 @@
       "num_prompts": 4018,
       "beta_target": 0.20400000000000001,
       "tau": -0.219012051820755,
-      "kept": 3056,
-      "dropped": 962,
-      "beta_actual": 0.7605774016923843,
-      "sigma_kept": 6.347310242476708e-05,
-      "vprob_kept": 1.0721603569976304e-05,
-      "gbar_norm2_kept": 4.1070763495898434e-07,
-      "sigma_full": 8.406546265455406e-05,
-      "vprob_full": 1.4469913009242716e-05,
-      "gbar_norm2_full": 5.815101531146056e-07,
+      "kept": 3041,
+      "dropped": 977,
+      "beta_actual": 0.7568442010950722,
+      "sigma_kept": 6.366402333977132e-05,
+      "vprob_kept": 1.0629224623301485e-05,
+      "gbar_norm2_kept": 4.13446392410149e-07,
+      "sigma_full": 8.465232282373269e-05,
+      "vprob_full": 1.447744277812684e-05,
+      "gbar_norm2_full": 5.859529004633941e-07,
       "passk_ks": [
         1,
         8
       ],
       "pass_at_k_kept": {
-        "1": 37.3,
-        "8": 68.1
+        "1": 37.6,
+        "8": 67.8
       },
       "pass_at_k_dropped": {
-        "1": 19.6,
-        "8": 48.8
+        "1": 20.3,
+        "8": 51.1
       },
       "pass_at_k_full": {
-        "1": 33.1,
-        "8": 63.5
+        "1": 33.4,
+        "8": 63.7
       },
       "valid_counts_kept": {
-        "1": 3056,
-        "8": 3056
+        "1": 3041,
+        "8": 3041
       },
       "valid_counts_dropped": {
-        "1": 962,
-        "8": 962
+        "1": 977,
+        "8": 977
       },
       "valid_counts_full": {
         "1": 4018,
@@ -95,6 +97,102 @@
       "beta_target_log": 0.20400000000000001,
       "beta_actual_log": 0.3310546875,
       "tau_log": -0.219012051820755
+    },
+    {
+      "world_size": 4,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.21200000000000002,
+      "tau": -0.142108753323555,
+      "kept": 1623,
+      "dropped": 2395,
+      "beta_actual": 0.40393230462916874,
+      "sigma_kept": 4.500210821649668e-05,
+      "vprob_kept": 7.93663334426836e-06,
+      "gbar_norm2_kept": 1.9402986272255603e-07,
+      "sigma_full": 7.534131446278305e-05,
+      "vprob_full": 1.316787736012941e-05,
+      "gbar_norm2_full": 4.47000855763875e-07,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 51.7,
+        "8": 76.7
+      },
+      "pass_at_k_dropped": {
+        "1": 32.5,
+        "8": 61.6
+      },
+      "pass_at_k_full": {
+        "1": 40.2,
+        "8": 67.7
+      },
+      "valid_counts_kept": {
+        "1": 1623,
+        "8": 1623
+      },
+      "valid_counts_dropped": {
+        "1": 2395,
+        "8": 2395
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 120,
+      "beta_target_log": 0.21200000000000002,
+      "beta_actual_log": 0.2568359375,
+      "tau_log": -0.142108753323555
+    },
+    {
+      "world_size": 4,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.7142857142857144,
+      "tau": -0.18893561831542427,
+      "kept": 2870,
+      "dropped": 1148,
+      "beta_actual": 0.7142857142857143,
+      "sigma_kept": 5.472968861418272e-05,
+      "vprob_kept": 9.244618482207341e-06,
+      "gbar_norm2_kept": 2.604766436252228e-07,
+      "sigma_full": 7.346320779610329e-05,
+      "vprob_full": 1.2809140888606924e-05,
+      "gbar_norm2_full": 4.3834397439182014e-07,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 48.7,
+        "8": 74.5
+      },
+      "pass_at_k_dropped": {
+        "1": 24.5,
+        "8": 54.1
+      },
+      "pass_at_k_full": {
+        "1": 41.8,
+        "8": 68.7
+      },
+      "valid_counts_kept": {
+        "1": 2870,
+        "8": 2870
+      },
+      "valid_counts_dropped": {
+        "1": 1148,
+        "8": 1148
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 200,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
     }
   ],
   "baseline_by_step": {
@@ -103,17 +201,34 @@
       "vocab_size": 151936,
       "num_prompts": 4018,
       "beta_target": 0.20400000000000001,
-      "tau": -0.1315210970044136,
+      "tau": -0.1314501387476921,
       "kept": 820,
       "dropped": 3198,
       "beta_actual": 0.20408163265306123,
-      "sigma_kept": 4.408806600245376e-05,
-      "vprob_kept": 7.716517910370642e-06,
-      "gbar_norm2_kept": 2.6216802627667125e-07,
-      "sigma_full": 8.169909492103214e-05,
-      "vprob_full": 1.4026103708780129e-05,
-      "gbar_norm2_full": 5.624542730347266e-07,
+      "sigma_kept": 4.3871739213810966e-05,
+      "vprob_kept": 7.729851780874427e-06,
+      "gbar_norm2_kept": 2.517109632990989e-07,
+      "sigma_full": 8.194159493411592e-05,
+      "vprob_full": 1.4001584985558899e-05,
+      "gbar_norm2_full": 5.662071466278924e-07,
       "step": 40
+    },
+    "120": {
+      "world_size": 4,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.21200000000000002,
+      "tau": -0.10875082623958587,
+      "kept": 852,
+      "dropped": 3166,
+      "beta_actual": 0.21204579392732703,
+      "sigma_kept": 3.3259040151545765e-05,
+      "vprob_kept": 5.879975151321079e-06,
+      "gbar_norm2_kept": 1.150297345305501e-07,
+      "sigma_full": 6.922538442240137e-05,
+      "vprob_full": 1.189325706741173e-05,
+      "gbar_norm2_full": 3.278077134713227e-07,
+      "step": 120
     }
   }
 }

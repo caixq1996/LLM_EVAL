@@ -1,0 +1,234 @@
+{
+  "analysis_id": "539069ea0f40",
+  "engine": "vllm",
+  "tag": "auto_3b078b4d2ee5__rescaled",
+  "part_id": 0,
+  "num_parts": 4,
+  "config": {
+    "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "baseline_run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_nocurl_DeepSeek-R1-Distill-Qwen-1.5B",
+    "prompt_file": "/home/caixq/project/LLM_EVAL/data/deepscaler/train.jsonl",
+    "prompt_field": "problem",
+    "prompt_type": "think-boxed",
+    "num_prompts": 0,
+    "num_prompt_ratio": 0.1,
+    "subset_mode": "random",
+    "seed": 42,
+    "max_prompt_len": 512,
+    "tokenizer_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_majority_vote_curl_DeepSeek-R1-Distill-Qwen-1.5B/global_step_20/actor/huggingface",
+    "k_rollouts": 8,
+    "max_new_tokens": 3072,
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "sampling_mode": "topk",
+    "prob_mode": "full",
+    "sanitize_logits": true,
+    "proj_dim": 256,
+    "topk": 32,
+    "confidence_metric": "neg_entropy",
+    "start_beta": 0.2,
+    "end_beta": 1.0,
+    "schedule_steps": 313,
+    "beta_source": "log",
+    "beta_log_path": null,
+    "beta_log_root": "/home/caixq/project/LLM_EVAL/../VI-CURL/wandb",
+    "use_log_tau": true,
+    "gen_batch_size": 512,
+    "steps": "20,100,180,260",
+    "batch_var_seeds": null,
+    "batch_var_num_prompts": 128,
+    "batch_var_k": 1,
+    "compute_passk": true,
+    "data_name": "deepscaler",
+    "answer_field": "answer",
+    "passk_ks": "1,8"
+  },
+  "steps": [
+    20,
+    100,
+    180,
+    260
+  ],
+  "rows": [
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.202,
+      "tau": -0.36095497012138367,
+      "kept": 3377,
+      "dropped": 641,
+      "beta_actual": 0.8404678944748631,
+      "sigma_kept": 6.210894064326372e-05,
+      "vprob_kept": 1.0936667527650216e-05,
+      "gbar_norm2_kept": 9.98384951086354e-07,
+      "sigma_full": 7.300397736825624e-05,
+      "vprob_full": 1.3549961639837667e-05,
+      "gbar_norm2_full": 1.603920802849437e-06,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 41.0,
+        "8": 71.4
+      },
+      "pass_at_k_dropped": {
+        "1": 15.1,
+        "8": 45.9
+      },
+      "pass_at_k_full": {
+        "1": 36.9,
+        "8": 67.3
+      },
+      "valid_counts_kept": {
+        "1": 3377,
+        "8": 3377
+      },
+      "valid_counts_dropped": {
+        "1": 641,
+        "8": 641
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 20,
+      "beta_target_log": 0.202,
+      "beta_actual_log": 0.280029296875,
+      "tau_log": -0.36095497012138367
+    },
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.4285714285714286,
+      "tau": -0.19550743060452605,
+      "kept": 1722,
+      "dropped": 2296,
+      "beta_actual": 0.42857142857142855,
+      "sigma_kept": 5.318104628769612e-05,
+      "vprob_kept": 9.146584090162533e-06,
+      "gbar_norm2_kept": 3.725100124209843e-07,
+      "sigma_full": 8.159442753502464e-05,
+      "vprob_full": 1.4812829899013151e-05,
+      "gbar_norm2_full": 1.3781515732424015e-06,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 58.2,
+        "8": 84.6
+      },
+      "pass_at_k_dropped": {
+        "1": 27.7,
+        "8": 60.3
+      },
+      "pass_at_k_full": {
+        "1": 40.8,
+        "8": 70.7
+      },
+      "valid_counts_kept": {
+        "1": 1722,
+        "8": 1722
+      },
+      "valid_counts_dropped": {
+        "1": 2296,
+        "8": 2296
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 100,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
+    },
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.6571428571428571,
+      "tau": -0.3131607523986271,
+      "kept": 2640,
+      "dropped": 1378,
+      "beta_actual": 0.6570433051269288,
+      "sigma_kept": 6.93401266916584e-05,
+      "vprob_kept": 1.2339775496204545e-05,
+      "gbar_norm2_kept": 9.6715544832914e-07,
+      "sigma_full": 8.099812576938189e-05,
+      "vprob_full": 1.6269662306977158e-05,
+      "gbar_norm2_full": 2.5091061025177342e-06,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 57.6,
+        "8": 83.8
+      },
+      "pass_at_k_dropped": {
+        "1": 22.4,
+        "8": 54.9
+      },
+      "pass_at_k_full": {
+        "1": 45.5,
+        "8": 73.9
+      },
+      "valid_counts_kept": {
+        "1": 2640,
+        "8": 2640
+      },
+      "valid_counts_dropped": {
+        "1": 1378,
+        "8": 1378
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 180,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
+    }
+  ],
+  "baseline_by_step": {
+    "20": {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.202,
+      "tau": -0.15648317962884903,
+      "kept": 812,
+      "dropped": 3206,
+      "beta_actual": 0.20209059233449478,
+      "sigma_kept": 4.045707548912867e-05,
+      "vprob_kept": 7.126490460189692e-06,
+      "gbar_norm2_kept": 3.326858246244286e-07,
+      "sigma_full": 7.408762823548688e-05,
+      "vprob_full": 1.370591129308299e-05,
+      "gbar_norm2_full": 1.56221555908618e-06,
+      "step": 20
+    },
+    "100": {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.4285714285714286,
+      "tau": -0.19726527801581792,
+      "kept": 1722,
+      "dropped": 2296,
+      "beta_actual": 0.42857142857142855,
+      "sigma_kept": 5.7168233399688084e-05,
+      "vprob_kept": 9.837407005989949e-06,
+      "gbar_norm2_kept": 4.347249159173271e-07,
+      "sigma_full": 9.278298463450999e-05,
+      "vprob_full": 1.6649722063237008e-05,
+      "gbar_norm2_full": 1.4582450424637395e-06,
+      "step": 100
+    }
+  }
+}

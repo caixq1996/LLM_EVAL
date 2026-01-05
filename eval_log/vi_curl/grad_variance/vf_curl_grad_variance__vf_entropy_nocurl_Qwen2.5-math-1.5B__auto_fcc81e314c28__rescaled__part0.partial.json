@@ -1,9 +1,9 @@
 {
-  "analysis_id": "8330bfd7b345",
+  "analysis_id": "717a302af87e",
   "engine": "vllm",
   "tag": "auto_fcc81e314c28__rescaled",
   "part_id": 0,
-  "num_parts": 8,
+  "num_parts": 4,
   "config": {
     "run_dir": "/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff/vf_entropy_nocurl_Qwen2.5-math-1.5B",
     "baseline_run_dir": null,
@@ -34,7 +34,7 @@
     "beta_log_root": "/home/caixq/project/LLM_EVAL/../VI-CURL/wandb",
     "use_log_tau": true,
     "gen_batch_size": 512,
-    "steps": "20,180",
+    "steps": "20,100,180,260",
     "batch_var_seeds": null,
     "batch_var_num_prompts": 128,
     "batch_var_k": 1,
@@ -45,7 +45,9 @@
   },
   "steps": [
     20,
-    180
+    100,
+    180,
+    260
   ],
   "rows": [
     {
@@ -53,31 +55,31 @@
       "vocab_size": 151936,
       "num_prompts": 4018,
       "beta_target": 0.2,
-      "tau": -0.12929030060768126,
+      "tau": -0.12912283241748806,
       "kept": 804,
       "dropped": 3214,
       "beta_actual": 0.20009955201592833,
-      "sigma_kept": 4.306737334662836e-05,
-      "vprob_kept": 7.566679740237616e-06,
-      "gbar_norm2_kept": 2.0391381219952937e-07,
-      "sigma_full": 7.785714558989012e-05,
-      "vprob_full": 1.3498234946261243e-05,
-      "gbar_norm2_full": 5.062648328875138e-07,
+      "sigma_kept": 4.3315820022230154e-05,
+      "vprob_kept": 7.561765627989147e-06,
+      "gbar_norm2_kept": 2.1231556606213677e-07,
+      "sigma_full": 7.789135743934351e-05,
+      "vprob_full": 1.3480185428785192e-05,
+      "gbar_norm2_full": 5.123923395357723e-07,
       "passk_ks": [
         1,
         8
       ],
       "pass_at_k_kept": {
-        "1": 52.0,
-        "8": 76.5
+        "1": 53.3,
+        "8": 78.7
       },
       "pass_at_k_dropped": {
-        "1": 31.4,
-        "8": 61.5
+        "1": 32.0,
+        "8": 62.8
       },
       "pass_at_k_full": {
-        "1": 35.5,
-        "8": 64.5
+        "1": 36.2,
+        "8": 66.0
       },
       "valid_counts_kept": {
         "1": 804,

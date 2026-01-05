@@ -78,11 +78,12 @@ def main() -> None:
     if not ks:
         ks = [1]
     title = f"{args.run_name} kept vs dropped pass@k"
-    merged_png = out_dir / f"vi_curl_passk__{args.run_name}__{args.tag}.png"
-    _plot_passk(steps=merged["steps"], rows=merged["rows"], ks=ks, out_path=merged_png, title=title)
+    merged_base = out_dir / f"vi_curl_passk__{args.run_name}__{args.tag}"
+    saved = _plot_passk(steps=merged["steps"], rows=merged["rows"], ks=ks, out_path=merged_base, title=title)
 
     print(f"[OK] merged json: {merged_json}")
-    print(f"[OK] merged plot: {merged_png}")
+    for p in saved:
+        print(f"[OK] merged plot: {p}")
 
     if args.delete_parts:
         for p in part_paths:

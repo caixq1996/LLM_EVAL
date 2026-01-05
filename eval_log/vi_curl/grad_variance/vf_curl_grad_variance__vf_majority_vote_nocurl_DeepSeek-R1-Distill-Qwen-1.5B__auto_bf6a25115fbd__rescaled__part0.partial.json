@@ -97,6 +97,102 @@
       "beta_target_log": null,
       "beta_actual_log": null,
       "tau_log": null
+    },
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.4285714285714286,
+      "tau": -0.1967783740588597,
+      "kept": 1722,
+      "dropped": 2296,
+      "beta_actual": 0.42857142857142855,
+      "sigma_kept": 5.7542489089380736e-05,
+      "vprob_kept": 9.866645006044183e-06,
+      "gbar_norm2_kept": 4.29788489935262e-07,
+      "sigma_full": 9.323735651008365e-05,
+      "vprob_full": 1.6797245211741024e-05,
+      "gbar_norm2_full": 1.4565122694884147e-06,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 56.7,
+        "8": 84.4
+      },
+      "pass_at_k_dropped": {
+        "1": 28.3,
+        "8": 61.1
+      },
+      "pass_at_k_full": {
+        "1": 40.5,
+        "8": 71.1
+      },
+      "valid_counts_kept": {
+        "1": 1722,
+        "8": 1722
+      },
+      "valid_counts_dropped": {
+        "1": 2296,
+        "8": 2296
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 100,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
+    },
+    {
+      "world_size": 8,
+      "vocab_size": 151936,
+      "num_prompts": 4018,
+      "beta_target": 0.6571428571428571,
+      "tau": -0.2616802964891706,
+      "kept": 2640,
+      "dropped": 1378,
+      "beta_actual": 0.6570433051269288,
+      "sigma_kept": 6.606760887658917e-05,
+      "vprob_kept": 1.150502228255957e-05,
+      "gbar_norm2_kept": 5.69684475749435e-07,
+      "sigma_full": 8.855392556140045e-05,
+      "vprob_full": 1.6499648989209486e-05,
+      "gbar_norm2_full": 1.5418389310150131e-06,
+      "passk_ks": [
+        1,
+        8
+      ],
+      "pass_at_k_kept": {
+        "1": 49.0,
+        "8": 76.3
+      },
+      "pass_at_k_dropped": {
+        "1": 21.1,
+        "8": 52.9
+      },
+      "pass_at_k_full": {
+        "1": 39.4,
+        "8": 68.3
+      },
+      "valid_counts_kept": {
+        "1": 2640,
+        "8": 2640
+      },
+      "valid_counts_dropped": {
+        "1": 1378,
+        "8": 1378
+      },
+      "valid_counts_full": {
+        "1": 4018,
+        "8": 4018
+      },
+      "step": 180,
+      "beta_target_log": null,
+      "beta_actual_log": null,
+      "tau_log": null
     }
   ],
   "baseline_by_step": {}

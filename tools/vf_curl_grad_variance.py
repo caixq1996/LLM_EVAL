@@ -2212,6 +2212,31 @@ def compute_step_metrics(
             float(np.dot(g_means_np[mask_keep_np].mean(axis=0), g_means_np[mask_keep_np].mean(axis=0))) if kept > 0 else float("nan")
         )
 
+        # --- Bias metrics: curriculum vs full dataset gradient difference ---
+        # gbar_kept = mean gradient over kept prompts
+        # gbar_full = mean gradient over all prompts
+        # Bias measures how much the curriculum-selected gradient differs from the full gradient
+        gbar_full_vec = g_means_np.mean(axis=0) if g_means_np.size else np.zeros(proj_dim)
+        gbar_kept_vec = g_means_np[mask_keep_np].mean(axis=0) if kept > 0 else np.zeros(proj_dim)
+        
+        # L2 norm of gradient difference (absolute bias)
+        bias_l2 = float(np.linalg.norm(gbar_kept_vec - gbar_full_vec))
+        
+        # Relative bias: ||gbar_kept - gbar_full|| / ||gbar_full||
+        gbar_full_norm = float(np.linalg.norm(gbar_full_vec))
+        bias_relative = bias_l2 / (gbar_full_norm + 1e-10) if gbar_full_norm > 1e-10 else float("nan")
+        
+        # Cosine similarity: measures directional alignment (1 = identical direction)
+        gbar_kept_norm = float(np.linalg.norm(gbar_kept_vec))
+        if gbar_kept_norm > 1e-10 and gbar_full_norm > 1e-10:
+            cosine_similarity = float(np.dot(gbar_kept_vec, gbar_full_vec) / (gbar_kept_norm * gbar_full_norm))
+        else:
+            cosine_similarity = float("nan")
+        
+        # Variance ratios for convenience
+        sigma_ratio = kept_sigma / full_sigma if full_sigma > 1e-10 else float("nan")
+        vprob_ratio = kept_vprob / full_vprob if full_vprob > 1e-10 else float("nan")
+
         beta_actual = float(kept) / float(total) if total > 0 else float("nan")
         out = {
             "world_size": int(world_size),
@@ -2222,12 +2247,22 @@ def compute_step_metrics(
             "kept": int(kept),
             "dropped": int(total - kept),
             "beta_actual": float(beta_actual),
+            # Variance metrics
             "sigma_kept": float(kept_sigma),
             "vprob_kept": float(kept_vprob),
             "gbar_norm2_kept": float(kept_gbar_norm2),
             "sigma_full": float(full_sigma),
             "vprob_full": float(full_vprob),
             "gbar_norm2_full": float(full_gbar_norm2),
+            "sigma_ratio": float(sigma_ratio),
+            "vprob_ratio": float(vprob_ratio),
+            # Bias metrics
+            "bias_l2": float(bias_l2),
+            "bias_relative": float(bias_relative),
+            "cosine_similarity": float(cosine_similarity),
+            # Raw gradient vectors (projections, for post-hoc analysis)
+            "gbar_kept_vec": gbar_kept_vec.tolist(),
+            "gbar_full_vec": gbar_full_vec.tolist(),
         }
 
         if passk_enabled and score_mat is not None and passk_compute is not None:
@@ -2467,7 +2502,12 @@ def plot_results(
     baseline_rows: Optional[Sequence[Dict[str, Any]]],
     out_path: Path,
     title: str,
-) -> None:
+    baseline_full_only: bool = False,
+) -> List[Path]:
+    plot_label_size = 14
+    plot_tick_size = 12
+    plot_legend_size = 12
+    plot_xlabel = "training steps"
     xs = np.array(list(steps), dtype=np.int64)
 
     def _arr(key: str, src: Sequence[Dict[str, Any]]) -> np.ndarray:
@@ -2550,89 +2590,128 @@ def plot_results(
     if baseline_rows is not None and batch_var is not None and base_batch_var is not None:
         batch_ratio = _ratio(batch_var, base_batch_var)
 
-    # Add a curriculum/schedule panel (β + τ) so the threshold dynamics are visible.
-    n_panels = 4 + (1 if batch_var is not None else 0)
-    fig_h = 12 if batch_var is not None else 11
-    fig, axes = plt.subplots(n_panels, 1, figsize=(10, fig_h), sharex=True)
-    if not isinstance(axes, np.ndarray):
-        axes = np.array([axes])
+    out_path = Path(out_path)
+    out_base = out_path.with_suffix("") if out_path.suffix else out_path
+    out_base.parent.mkdir(parents=True, exist_ok=True)
+    saved: List[Path] = []
 
-    ax0 = axes[0]
-    if sigma_num_ratio_kept is not None:
-        ax0.plot(xs, _pct(sigma_num_ratio_kept), marker="o", linewidth=1.6, label="vs baseline kept@β")
-        ax0.plot(xs, _pct(sigma_num_ratio_full), marker="o", linewidth=1.2, linestyle="--", alpha=0.55, label="vs baseline full")
-        ax0.legend(loc="best", fontsize=8)
+    def _save(fig: plt.Figure, suffix: str) -> None:
+        out_file = out_base.parent / f"{out_base.name}__{suffix}.pdf"
+        fig.tight_layout()
+        fig.savefig(out_file, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        saved.append(out_file)
+
+    full_only = bool(baseline_full_only)
+    if full_only:
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.plot(xs, sigma_num_ratio_full, marker="o", linewidth=1.6, color="tab:blue", label=r"$\sigma_{g,t}^2$ (action)")
+        ax.plot(xs, vprob_num_ratio_full, marker="o", linewidth=1.6, color="tab:orange", label=r"$V_{\mathrm{prob},t}$ (problem)")
+        ax.axhline(1.0, color="gray", linestyle="--", linewidth=1)
+        ax.set_ylabel(r"Variance Ratio (curl / baseline)", fontsize=plot_label_size)
+        ax.set_xlabel(plot_xlabel, fontsize=plot_label_size)
+        ax.tick_params(axis="both", labelsize=plot_tick_size)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+        ax.legend(loc="best", fontsize=plot_legend_size)
+        ax.grid(True, alpha=0.3)
+        _save(fig, "sigma_vprob")
     else:
-        ax0.plot(xs, _pct(sigma_num_ratio_full), marker="o", linewidth=1.5)
-    ax0.axhline(0.0, color="gray", linestyle="--", linewidth=1)
-    ax0.set_ylabel(r"$\Delta\%\,\sigma_{g,t}^2$ (kept)")
-    ax0.yaxis.set_major_locator(MaxNLocator(nbins=6))
-    ax0.grid(True, alpha=0.3)
+        fig, ax = plt.subplots(figsize=(10, 4))
+        if sigma_num_ratio_kept is not None:
+            ax.plot(xs, sigma_num_ratio_kept, marker="o", linewidth=1.6, color="tab:blue", label="vs baseline kept@β")
+            ax.plot(
+                xs,
+                sigma_num_ratio_full,
+                marker="o",
+                linewidth=1.2,
+                linestyle="--",
+                alpha=0.55,
+                color="tab:blue",
+                label="vs baseline full",
+            )
+            ax.legend(loc="best", fontsize=plot_legend_size)
+        else:
+            ax.plot(xs, sigma_num_ratio_full, marker="o", linewidth=1.5)
+        ax.axhline(1.0, color="gray", linestyle="--", linewidth=1)
+        ax.set_ylabel(r"$\sigma_{g,t}^2$ Ratio (curl / baseline)", fontsize=plot_label_size)
+        ax.set_xlabel(plot_xlabel, fontsize=plot_label_size)
+        ax.tick_params(axis="both", labelsize=plot_tick_size)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+        ax.grid(True, alpha=0.3)
+        _save(fig, "sigma")
 
-    ax1 = axes[1]
-    if vprob_num_ratio_kept is not None:
-        ax1.plot(xs, _pct(vprob_num_ratio_kept), marker="o", linewidth=1.6, color="tab:orange", label="vs baseline kept@β")
-        ax1.plot(xs, _pct(vprob_num_ratio_full), marker="o", linewidth=1.2, linestyle="--", alpha=0.55, color="tab:orange", label="vs baseline full")
-        ax1.legend(loc="best", fontsize=8)
+        fig, ax = plt.subplots(figsize=(10, 4))
+        if vprob_num_ratio_kept is not None:
+            ax.plot(xs, vprob_num_ratio_kept, marker="o", linewidth=1.6, color="tab:orange", label="vs baseline kept@β")
+            ax.plot(xs, vprob_num_ratio_full, marker="o", linewidth=1.2, linestyle="--", alpha=0.55, color="tab:orange", label="vs baseline full")
+            ax.legend(loc="best", fontsize=plot_legend_size)
+        else:
+            ax.plot(xs, vprob_num_ratio_full, marker="o", linewidth=1.5, color="tab:orange")
+        ax.axhline(1.0, color="gray", linestyle="--", linewidth=1)
+        ax.set_ylabel(r"$V_{\mathrm{prob},t}$ Ratio (curl / baseline)", fontsize=plot_label_size)
+        ax.set_xlabel(plot_xlabel, fontsize=plot_label_size)
+        ax.tick_params(axis="both", labelsize=plot_tick_size)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+        ax.grid(True, alpha=0.3)
+        _save(fig, "vprob")
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    if proxy_ratio_kept is not None and not full_only:
+        ax.plot(xs, proxy_ratio_kept, marker="o", linewidth=2.0, color="tab:purple", label="vs baseline kept@β")
+        ax.plot(xs, proxy_ratio_full, marker="o", linewidth=1.4, linestyle="--", alpha=0.55, color="tab:purple", label="vs baseline full")
+        ax.legend(loc="best", fontsize=plot_legend_size)
     else:
-        ax1.plot(xs, _pct(vprob_num_ratio_full), marker="o", linewidth=1.5, color="tab:orange")
-    ax1.axhline(0.0, color="gray", linestyle="--", linewidth=1)
-    ax1.set_ylabel(r"$\Delta\%\,V_{\mathrm{prob},t}$ (kept)")
-    ax1.yaxis.set_major_locator(MaxNLocator(nbins=6))
-    ax1.grid(True, alpha=0.3)
+        label = "vs baseline full" if full_only and baseline_rows is not None else None
+        ax.plot(xs, proxy_ratio_full, marker="o", linewidth=1.8, color="tab:purple", label=label)
+        if label:
+            ax.legend(loc="best", fontsize=plot_legend_size)
+    ax.axhline(1.0, color="gray", linestyle="--", linewidth=1)
+    ax.set_ylabel(r"Variance Proxy Ratio (curl / baseline)", fontsize=plot_label_size)
+    ax.set_xlabel(plot_xlabel, fontsize=plot_label_size)
+    ax.tick_params(axis="both", labelsize=plot_tick_size)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+    ax.grid(True, alpha=0.3)
+    _save(fig, "proxy")
 
-    ax_total = axes[2]
-    if proxy_ratio_kept is not None:
-        ax_total.plot(xs, _pct(proxy_ratio_kept), marker="o", linewidth=2.0, color="tab:purple", label="vs baseline kept@β")
-        ax_total.plot(xs, _pct(proxy_ratio_full), marker="o", linewidth=1.4, linestyle="--", alpha=0.55, color="tab:purple", label="vs baseline full")
-        ax_total.legend(loc="best", fontsize=8)
-    else:
-        ax_total.plot(xs, _pct(proxy_ratio_full), marker="o", linewidth=1.8, color="tab:purple")
-    ax_total.axhline(0.0, color="gray", linestyle="--", linewidth=1)
-    ax_total.set_ylabel(r"$\Delta\%$ variance proxy")
-    ax_total.yaxis.set_major_locator(MaxNLocator(nbins=6))
-    ax_total.grid(True, alpha=0.3)
-
-    ax_sched = axes[3]
-    ax_sched.plot(xs, betas, linewidth=1.8, color="tab:blue", label=r"$\beta$ target")
+    fig, ax = plt.subplots(figsize=(10, 3.6))
+    ax.plot(xs, betas, linewidth=1.8, color="tab:blue", label=r"$\beta$ target")
     if beta_actual is not None and np.any(np.isfinite(beta_actual)):
-        ax_sched.plot(xs, beta_actual, linewidth=1.4, linestyle="--", color="tab:blue", alpha=0.7, label=r"$\beta$ actual (eval)")
-    ax_sched.set_ylabel(r"$\beta$")
-    ax_sched.set_ylim(0.0, 1.05)
-    ax_sched.yaxis.set_major_locator(MaxNLocator(nbins=6))
-    ax_sched.grid(True, alpha=0.3)
+        ax.plot(xs, beta_actual, linewidth=1.4, linestyle="--", color="tab:blue", alpha=0.7, label=r"$\beta$ actual (eval)")
+    ax.set_ylabel(r"$\beta$", fontsize=plot_label_size)
+    ax.set_xlabel(plot_xlabel, fontsize=plot_label_size)
+    ax.tick_params(axis="both", labelsize=plot_tick_size)
+    ax.set_ylim(0.0, 1.05)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+    ax.grid(True, alpha=0.3)
 
     if tau is not None and np.any(np.isfinite(tau)):
-        ax_tau = ax_sched.twinx()
+        ax_tau = ax.twinx()
         ax_tau.plot(xs, tau, linewidth=1.8, color="tab:red", label=r"$\tau$ (threshold)")
-        ax_tau.set_ylabel(r"$\tau$")
+        ax_tau.set_ylabel(r"$\tau$", fontsize=plot_label_size)
+        ax_tau.tick_params(axis="y", labelsize=plot_tick_size)
         ax_tau.yaxis.set_major_locator(MaxNLocator(nbins=6))
-
-        h1, l1 = ax_sched.get_legend_handles_labels()
+        h1, l1 = ax.get_legend_handles_labels()
         h2, l2 = ax_tau.get_legend_handles_labels()
-        ax_sched.legend(h1 + h2, l1 + l2, loc="best", fontsize=8)
+        ax.legend(h1 + h2, l1 + l2, loc="best", fontsize=plot_legend_size)
     else:
-        ax_sched.legend(loc="best", fontsize=8)
+        ax.legend(loc="best", fontsize=plot_legend_size)
+    _save(fig, "schedule")
 
     if batch_var is not None:
+        fig, ax = plt.subplots(figsize=(10, 3.6))
         if batch_ratio is not None:
-            ax_batch = axes[4]
-            ax_batch.plot(xs, _pct(batch_ratio), marker="o", linewidth=1.5, color="tab:green")
-            ax_batch.axhline(0.0, color="gray", linestyle="--", linewidth=1)
-            ax_batch.set_ylabel(r"$\Delta\%$ batch ||g|| var")
+            ax.plot(xs, batch_ratio, marker="o", linewidth=1.5, color="tab:green")
+            ax.axhline(1.0, color="gray", linestyle="--", linewidth=1)
+            ax.set_ylabel(r"Batch $\|g\|$ Var Ratio (curl / baseline)", fontsize=plot_label_size)
         else:
-            ax_batch = axes[4]
-            ax_batch.plot(xs, batch_var, marker="o", linewidth=1.5, color="tab:green")
-            ax_batch.set_ylabel("Var_seed(||g_batch||2)")
-        ax_batch.grid(True, alpha=0.3)
+            ax.plot(xs, batch_var, marker="o", linewidth=1.5, color="tab:green")
+            ax.set_ylabel(r"Var$_{\mathrm{seed}}(\|g_{\mathrm{batch}}\|^2)$", fontsize=plot_label_size)
+        ax.set_xlabel(plot_xlabel, fontsize=plot_label_size)
+        ax.tick_params(axis="both", labelsize=plot_tick_size)
+        ax.grid(True, alpha=0.3)
+        _save(fig, "batch_var")
 
-    axes[-1].set_xlabel("training global_step")
-    fig.suptitle(f"{title} ({denom_desc})")
-    fig.tight_layout(rect=[0, 0.02, 1, 0.97])
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=200)
-    plt.close(fig)
+    return saved
 
 
 def parse_args() -> argparse.Namespace:
@@ -2731,6 +2810,8 @@ def parse_args() -> argparse.Namespace:
                     help="Total parts for partial runs. If >1, output filename includes __part<id>.")
     ap.add_argument("--no_plot", action="store_true", default=False,
                     help="Skip plotting (useful for partial runs; merge later).")
+    ap.add_argument("--plot_baseline_full_only", action="store_true", default=False,
+                    help="Only plot the vs-baseline-full curve (solid line) when baseline is available.")
     ap.add_argument("--resume", action="store_true", default=True,
                     help="Resume from a partial progress file if present (default: True).")
     ap.add_argument("--no_resume", action="store_false", dest="resume")
@@ -3032,7 +3113,7 @@ def main() -> None:
     else:
         base = f"vf_curl_grad_variance__{run_key}__{analysis_id}"
     json_path = out_dir / f"{base}.json"
-    fig_path = out_dir / f"{base}.png"
+    fig_base = out_dir / f"{base}"
     progress_path = out_dir / f"{base}.partial.json"
 
     if json_path.exists():
@@ -3043,14 +3124,16 @@ def main() -> None:
                 if not args.no_plot:
                     rows = payload["rows"]
                     base_rows = payload.get("baseline_rows")
-                    plot_results(
+                    saved = plot_results(
                         steps=payload["steps"],
                         rows=rows,
                         baseline_rows=base_rows,
-                        out_path=fig_path,
+                        out_path=fig_base,
                         title=payload.get("title", ""),
+                        baseline_full_only=bool(args.plot_baseline_full_only),
                     )
-                    print(f"[OK] Plot saved to {fig_path}")
+                    for p in saved:
+                        print(f"[OK] Plot saved to {p}")
                 return
             print(
                 f"[CACHE] Found {json_path} but analysis_id mismatch; recomputing.\n"
@@ -3324,8 +3407,16 @@ def main() -> None:
             pass
 
     if not args.no_plot:
-        plot_results(steps=steps, rows=rows, baseline_rows=baseline_rows, out_path=fig_path, title=title)
-        print(f"[OK] Saved plot:    {fig_path}")
+        saved = plot_results(
+            steps=steps,
+            rows=rows,
+            baseline_rows=baseline_rows,
+            out_path=fig_base,
+            title=title,
+            baseline_full_only=bool(args.plot_baseline_full_only),
+        )
+        for p in saved:
+            print(f"[OK] Saved plot:    {p}")
     print(f"[OK] Saved metrics: {json_path}")
 
     if bool(cfg.compute_passk) and int(args.num_parts) <= 1:
@@ -3333,7 +3424,7 @@ def main() -> None:
         if has_passk:
             passk_tag = str(tag) if tag is not None else str(analysis_id)
             passk_json = out_dir / f"vi_curl_passk__{run_key}__{passk_tag}.json"
-            passk_png = out_dir / f"vi_curl_passk__{run_key}__{passk_tag}.png"
+            passk_base = out_dir / f"vi_curl_passk__{run_key}__{passk_tag}"
             passk_payload = {
                 "run_name": run_key,
                 "tag": passk_tag,
@@ -3359,8 +3450,9 @@ def main() -> None:
                     sys.path.insert(0, str(eval_root))
                 from tools.vi_curl_passk_kept_dropped import _plot_passk  # type: ignore
 
-                _plot_passk(steps=steps, rows=rows, ks=ks, out_path=passk_png, title=f"{run_key} kept vs dropped pass@k")
-                print(f"[OK] Saved passk plot: {passk_png}")
+                saved = _plot_passk(steps=steps, rows=rows, ks=ks, out_path=passk_base, title=f"{run_key} kept vs dropped pass@k")
+                for p in saved:
+                    print(f"[OK] Saved passk plot: {p}")
             print(f"[OK] Saved passk json: {passk_json}")
 
 

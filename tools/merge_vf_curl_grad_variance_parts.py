@@ -8,7 +8,7 @@ Expected part files:
 
 Output:
   vf_curl_grad_variance__<run_name>__<tag>.json
-  vf_curl_grad_variance__<run_name>__<tag>.png
+  vf_curl_grad_variance__<run_name>__<tag>__*.pdf
 """
 
 from __future__ import annotations
@@ -31,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--tag", type=str, required=True)
     ap.add_argument("--num_parts", type=int, required=True)
     ap.add_argument("--delete_parts", action="store_true", default=False)
+    ap.add_argument("--plot_baseline_full_only", action="store_true", default=False,
+                    help="Only plot the vs-baseline-full curve (solid line) when baseline is available.")
     return ap.parse_args()
 
 
@@ -100,7 +102,7 @@ def main() -> None:
     merged = _merge_payloads(parts)
 
     merged_json = out_dir / f"vf_curl_grad_variance__{args.run_name}__{args.tag}.json"
-    merged_png = out_dir / f"vf_curl_grad_variance__{args.run_name}__{args.tag}.png"
+    merged_base = out_dir / f"vf_curl_grad_variance__{args.run_name}__{args.tag}"
     merged_json.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Plot via the same helper to keep style consistent.
@@ -109,23 +111,25 @@ def main() -> None:
         sys.path.insert(0, str(eval_root))
     from tools.vf_curl_grad_variance import plot_results  # type: ignore
 
-    plot_results(
+    saved = plot_results(
         steps=merged["steps"],
         rows=merged["rows"],
         baseline_rows=merged.get("baseline_rows"),
-        out_path=merged_png,
+        out_path=merged_base,
         title=merged.get("title", ""),
+        baseline_full_only=bool(args.plot_baseline_full_only),
     )
 
     print(f"[OK] merged json: {merged_json}")
-    print(f"[OK] merged plot: {merged_png}")
+    for p in saved:
+        print(f"[OK] merged plot: {p}")
 
     # If pass@k fields are present, emit passk-only json/png using the same rows.
     rows = merged.get("rows", [])
     has_passk = any(isinstance(r, dict) and "pass_at_k_kept" in r for r in rows)
     if has_passk:
         passk_json = out_dir / f"vi_curl_passk__{args.run_name}__{args.tag}.json"
-        passk_png = out_dir / f"vi_curl_passk__{args.run_name}__{args.tag}.png"
+        passk_base = out_dir / f"vi_curl_passk__{args.run_name}__{args.tag}"
         passk_payload = {
             "run_name": args.run_name,
             "tag": args.tag,
@@ -157,15 +161,16 @@ def main() -> None:
 
         from tools.vi_curl_passk_kept_dropped import _plot_passk  # type: ignore
 
-        _plot_passk(
+        saved = _plot_passk(
             steps=passk_payload["steps"],
             rows=rows,
             ks=ks,
-            out_path=passk_png,
+            out_path=passk_base,
             title=f"{args.run_name} kept vs dropped pass@k",
         )
         print(f"[OK] passk json: {passk_json}")
-        print(f"[OK] passk plot: {passk_png}")
+        for p in saved:
+            print(f"[OK] passk plot: {p}")
 
     if args.delete_parts:
         for p in part_paths:
@@ -173,10 +178,10 @@ def main() -> None:
                 p.unlink()
             except Exception:
                 pass
-            png = p.with_suffix(".png")
-            if png.exists():
+            base = p.with_suffix("")
+            for pdf in base.parent.glob(f"{base.name}__*.pdf"):
                 try:
-                    png.unlink()
+                    pdf.unlink()
                 except Exception:
                     pass
 

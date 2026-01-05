@@ -7,13 +7,35 @@
 #PBS -j oe
 #PBS -V
 
+set -e
+
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SUBMIT_DIR="${PBS_O_WORKDIR:-$PWD}"
+
+########################################
+# 0. CLI 参数（支持直接运行/自提交）
+########################################
+
+RUN_EVAL_SUBMIT="${RUN_EVAL_SUBMIT:-0}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --submit)
+      RUN_EVAL_SUBMIT=1
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
 ########################################
 # 0. 回到提交目录 + 日志初始化
 ########################################
 
 # 推荐：作业一开始就切回提交目录（用户指南 5.4.2）
-cd "${PBS_O_WORKDIR:-$HOME}"
-echo "[INFO] PBS_O_WORKDIR: ${PBS_O_WORKDIR}"
+cd "${SUBMIT_DIR}"
+echo "[INFO] PBS_O_WORKDIR: ${PBS_O_WORKDIR:-}"
 echo "[INFO] CWD: $(pwd)"
 
 # Miyabi 的 stdout/stderr 默认会写到提交目录下 jobname.o<jobid>:contentReference[oaicite:1]{index=1}
@@ -28,8 +50,6 @@ DEST_LOG="${LOG_DIR}/opra_eval_${TIMESTAMP}.log"
 echo "[INFO] Logging to: ${DEST_LOG}"
 # 所有 stdout/stderr 同时写到 PBS 默认输出和 DEST_LOG
 exec > >(tee -a "${DEST_LOG}") 2>&1
-
-set -e
 
 ########################################
 # 1. 基础路径 & 参数
@@ -61,6 +81,34 @@ NSAMP_G1="${NSAMP_G1:-${MAX_SAMPLE_NUMS}}"
 NSAMP_G2="${NSAMP_G2:-${MAX_SAMPLE_NUMS}}"
 
 mkdir -p "${OUT_ROOT}"
+
+########################################
+# 1.5 qsub 提交（登录节点触发）
+########################################
+
+if [[ -z "${PBS_JOBID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_SUBMIT}" == "1" ]]; then
+    MIYABI_SELECT_NODES="${MIYABI_SELECT_NODES:-64}"
+    MIYABI_QUEUE="${MIYABI_QUEUE:-regular-g}"
+    MIYABI_WALLTIME="${MIYABI_WALLTIME:-08:00:00}"
+    MIYABI_GROUP="${MIYABI_GROUP:-gq50}"
+
+    job_tag="${EXP_NAME//[^A-Za-z0-9_]/_}"
+    job_tag="${job_tag:0:60}"
+    job_name="${MIYABI_JOB_NAME:-EVAL_${PROJECT_NAME}_${job_tag}}"
+    job_name="${job_name//[^A-Za-z0-9_]/_}"
+    job_name="${job_name:0:120}"
+
+    echo "[INFO] Submitting eval job: ${job_name} nodes=${MIYABI_SELECT_NODES}"
+    qsub -N "${job_name}" \
+         -q "${MIYABI_QUEUE}" \
+         -l "select=${MIYABI_SELECT_NODES}" \
+         -l "walltime=${MIYABI_WALLTIME}" \
+         -W "group_list=${MIYABI_GROUP}" \
+         -v RUN_EVAL_SUBMITTED=1 \
+         -V \
+         "${SCRIPT_PATH}"
+    exit 0
+fi
 
 ########################################
 # 2. 节点探测

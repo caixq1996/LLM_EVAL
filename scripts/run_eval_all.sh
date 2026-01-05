@@ -8,8 +8,9 @@
 set -x
 set -e   # 如果希望有 worker 挂掉就整 job 失败，可以打开
 
-PROJECT_NAME="OPRA"
-EXP_NAMES="${EXP_NAMES:-OPRA-LoRA}"
+PROJECT_NAME="VI-CURL"
+EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
+MODEL_PATH="${MODEL_PATH:-checkpoints}" # giil | checkpoints
 
 # 特殊 adapter 算法配置（需要特殊 base model 的算法）
 # 格式: "algorithm1:suffix1,algorithm2:suffix2,..."
@@ -24,6 +25,7 @@ export SPECIAL_ADAPTER_ALGORITHMS="${SPECIAL_ADAPTER_ALGORITHMS:-pissa:_pissa_ba
 # 解析命令行参数
 KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF:-false}"
 RUN_EVAL_MULTI_SUBMIT="${RUN_EVAL_MULTI_SUBMIT:-false}"
+MULTI_SUBMIT_BASE_ONCE="${MULTI_SUBMIT_BASE_ONCE:-true}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --submit)
@@ -36,6 +38,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --multi-submit)
       RUN_EVAL_MULTI_SUBMIT="true"
+      shift
+      ;;
+    --no-base-once)
+      MULTI_SUBMIT_BASE_ONCE="false"
       shift
       ;;
     *)
@@ -80,8 +86,11 @@ exec > >(tee -a "${_MAIN_LOG}") 2>&1
 # =======================================================
 if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBMIT:-false}" == "true" && "${RUN_EVAL_SUBMIT:-0}" == "1" ]]; then
   # 需要先确定 MODEL_ROOT
-  # _MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
-  _MODEL_ROOT="${MODEL_ROOT:-/home/caixq/project/${PROJECT_NAME}/checkpoints/${EXP_NAMES}}"
+  if [[ $MODEL_PATH == "giil" ]]; then
+    _MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
+  else
+    _MODEL_ROOT="${MODEL_ROOT:-/home/caixq/project/${PROJECT_NAME}/checkpoints/${EXP_NAMES}}"
+  fi
   
   if [[ ! -d "$_MODEL_ROOT" ]]; then
     echo "[ERROR] MODEL_ROOT not found: $_MODEL_ROOT"
@@ -105,6 +114,31 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
     source "$SCHEDULER_TOOL"
     
     echo "[INFO] Multi-submit mode: found ${#SUBDIRS[@]} subdirectories under $_MODEL_ROOT"
+
+    if [[ "${MULTI_SUBMIT_BASE_ONCE}" == "true" ]]; then
+      base_job_tag="${EXP_NAMES//[^A-Za-z0-9_]/_}"
+      base_job_tag="${base_job_tag:0:60}"
+      base_job_name="EVAL_${PROJECT_NAME}_${base_job_tag}_BASE"
+      base_job_name="${base_job_name//[^A-Za-z0-9_]/_}"
+      base_job_name="${base_job_name:0:120}"
+      read -r base_jc_base base_n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$base_job_name")
+      base_jc_full="$(full_jclass_from_base "$base_jc_base")"
+      echo "[INFO] Submitting base-only eval job: ${base_job_name} (MODEL_ROOT=${_MODEL_ROOT})"
+      qsub -N "$base_job_name" \
+           -jc "$base_jc_full" \
+           -v NUM_GPUS="${base_n_gpus}" \
+           -v MODEL_ROOT="${_MODEL_ROOT}" \
+           -v EXP_NAMES="${EXP_NAMES}" \
+           -v RUN_EVAL_SUBMITTED=1 \
+           -v SKIP_STEP_EVAL=true \
+           -v SKIP_BASE_EVAL=false \
+           -v RUN_EVAL_MULTI_SUBMIT=false \
+           -v KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF}" \
+           -V \
+           "$0"
+    else
+      echo "[INFO] MULTI_SUBMIT_BASE_ONCE=false, skipping base-only job."
+    fi
     
     for subdir in "${SUBDIRS[@]}"; do
       sub_name="$(basename "$subdir")"
@@ -197,7 +231,16 @@ fi
 MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
 
 MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
+# Multi-submit subjobs: skip base eval by default to avoid duplication.
+MULTI_SUBMIT_SKIP_BASE_EVAL="${MULTI_SUBMIT_SKIP_BASE_EVAL:-true}"
+if [[ -n "${SUB_EXP_NAME:-}" && "${MULTI_SUBMIT_SKIP_BASE_EVAL}" == "true" ]]; then
+  if [[ -z "${SKIP_BASE_EVAL+x}" ]]; then
+    SKIP_BASE_EVAL=true
+  fi
+fi
 SKIP_BASE_EVAL="${SKIP_BASE_EVAL:-false}"
+# Skip global_step evaluation; useful for base-only runs.
+SKIP_STEP_EVAL="${SKIP_STEP_EVAL:-false}"
 
 # 导出目录（与 Python 代码中的 EXPORT_ROOT 一致）
 EXPORT_ROOT="${EXPORT_ROOT:-${WORK_HOME:-/data/giil/caixq}/export}"
@@ -258,6 +301,9 @@ base_args=(
 
 if [ "$SKIP_BASE_EVAL" = "true" ]; then
   base_args+=( --skip_base_eval )
+fi
+if [ "$SKIP_STEP_EVAL" = "true" ]; then
+  base_args+=( --skip_step_eval )
 fi
 
 pids=()

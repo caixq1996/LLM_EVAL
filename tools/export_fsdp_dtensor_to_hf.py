@@ -92,6 +92,23 @@ def export_one_step_to_hf(step_dir, base_model_dir, export_root):
     if has_adapter:
         model = AutoModelForCausalLM.from_pretrained(str(base_model_dir), trust_remote_code=True)
         try:
+            # Check if this is AdaLoRA and needs special handling
+            adapter_config_path = adapter_dir / 'adapter_config.json'
+            is_adalora = False
+            if adapter_config_path.exists():
+                with open(adapter_config_path, 'r') as f:
+                    adapter_cfg = json.load(f)
+                peft_type = adapter_cfg.get('peft_type', '').upper()
+                is_adalora = peft_type == 'ADALORA'
+                
+                # For AdaLoRA, we need to set r = init_r to match saved weights
+                if is_adalora:
+                    init_r = adapter_cfg.get('init_r', adapter_cfg.get('r', 32))
+                    adapter_cfg['r'] = init_r
+                    # Write patched config temporarily
+                    with open(adapter_config_path, 'w') as f:
+                        json.dump(adapter_cfg, f, indent=2)
+            
             model = PeftModel.from_pretrained(model, str(adapter_dir), is_trainable=False)
             model = model.merge_and_unload()
         except Exception as e:

@@ -27,6 +27,7 @@ EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
 # -------------------------------------------------------
 KEEP_HF_EXPORT="${KEEP_HF_EXPORT:-false}"
 RUN_VI_MULTI_SUBMIT="${RUN_VI_MULTI_SUBMIT:-false}"
+SKIP_NOCURL_SUBMIT="${SKIP_NOCURL_SUBMIT:-true}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --submit)
@@ -39,6 +40,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --multi-submit)
       RUN_VI_MULTI_SUBMIT="true"
+      shift
+      ;;
+    --no-skip-nocurl)
+      SKIP_NOCURL_SUBMIT="false"
       shift
       ;;
     *)
@@ -89,6 +94,10 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_VI_SUBMITTED:-}" && "${RUN_VI_MULTI_SUBMIT:-
   
   SUBDIRS=()
   while IFS= read -r -d '' dir; do
+    base_dir="$(basename "$dir")"
+    if [[ "${SKIP_NOCURL_SUBMIT}" == "true" && "${base_dir}" == *"_nocurl_"* ]]; then
+      continue
+    fi
     SUBDIRS+=("$dir")
   done < <(find "$_MODEL_ROOT" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
   
@@ -281,6 +290,7 @@ GRAD_AUTO_MERGE_PARTS="${GRAD_AUTO_MERGE_PARTS:-true}"
 GRAD_MERGE_DELETE_PARTS="${GRAD_MERGE_DELETE_PARTS:-false}"
 GRAD_MERGE_ONLY="${GRAD_MERGE_ONLY:-false}"
 GRAD_TAG="${GRAD_TAG:-}"
+PLOT_BASELINE_FULL_ONLY="${PLOT_BASELINE_FULL_ONLY:-true}"
 
 # Which tasks to run
 # pass@k is computed inside grad-variance when COMPUTE_PASSK=true.
@@ -347,6 +357,7 @@ run_gradvar() {
     export SHARD_LOAD_WORKERS EMPTY_CACHE_EACH_BATCH INFERENCE_MODE ENABLE_TF32
     export BATCH_VAR_SEEDS BATCH_VAR_NUM_PROMPTS BATCH_VAR_K
     export BASELINE_MODE
+    export PLOT_BASELINE_FULL_ONLY
     export USE_VLLM WORK_HOME KEEP_HF_EXPORT HF_EXPORT_ROOT BASE_MODEL_DIR EXPORT_HF_IF_NEEDED VLLM_TP VLLM_PP VLLM_GPU_MEM_UTIL VLLM_MAX_NUM_SEQS
     export OUT_DIR="${GRAD_OUT_DIR}"
     export LOG_DIR="${GRAD_LOG_DIR}"

@@ -129,8 +129,9 @@ STEPS="${STEPS:-}"
 BATCH_VAR_SEEDS="${BATCH_VAR_SEEDS:-}"         # e.g. "0,1,2,3"
 BATCH_VAR_NUM_PROMPTS="${BATCH_VAR_NUM_PROMPTS:-128}"
 BATCH_VAR_K="${BATCH_VAR_K:-1}"
+PLOT_BASELINE_FULL_ONLY="${PLOT_BASELINE_FULL_ONLY:-false}"
 
-# Output dir for json/png (script caches by config hash)
+# Output dir for json/pdf (script caches by config hash)
 OUT_DIR="${OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_variance}"
 LOG_DIR="${LOG_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_variance_logs}"
 
@@ -197,6 +198,9 @@ merge_one_parts() {
   if [[ "${MERGE_DELETE_PARTS}" == "true" ]]; then
     args+=( --delete_parts )
   fi
+  if [[ "${PLOT_BASELINE_FULL_ONLY}" == "true" ]]; then
+    args+=( --plot_baseline_full_only )
+  fi
 
   echo "[INFO] Merging parts: run=${run_name} tag=${tag} num_parts=${num_parts}"
   "$PYTHON_BIN" -u "${EVAL_ROOT}/tools/merge_vf_curl_grad_variance_parts.py" "${args[@]}"
@@ -216,6 +220,7 @@ auto_merge_parts_in_out_dir() {
 import re
 import sys
 import json
+import os
 from pathlib import Path
 
 out_dir = Path(sys.argv[1]).expanduser()
@@ -261,8 +266,10 @@ for (run, tag), g in sorted(groups.items()):
     if set(parts) != want:  # type: ignore[arg-type]
         continue
     merged_json = out_dir / f"vf_curl_grad_variance__{run}__{tag}.json"
-    merged_png = out_dir / f"vf_curl_grad_variance__{run}__{tag}.png"
-    if merged_json.exists() and merged_png.exists():
+    full_only = os.getenv("PLOT_BASELINE_FULL_ONLY", "false").lower() == "true"
+    suffix = "sigma_vprob" if full_only else "sigma"
+    merged_pdf = out_dir / f"vf_curl_grad_variance__{run}__{tag}__{suffix}.pdf"
+    if merged_json.exists() and merged_pdf.exists():
         continue
     print(f"{run}\t{tag}\t{expected}")
 PY
@@ -408,6 +415,9 @@ run_one() {
     if [[ "${NO_PLOT_PARTS:-false}" == "true" ]]; then
       args+=( --no_plot )
     fi
+  fi
+  if [[ "${PLOT_BASELINE_FULL_ONLY}" == "true" ]]; then
+    args+=( --plot_baseline_full_only )
   fi
 
   echo "[INFO] Run: ${run_name}"
