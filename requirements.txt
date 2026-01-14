@@ -6,6 +6,12 @@ torch
 transformers
 python_dateutil
 flash_attn
+numpy
+regex
+latex2sympy2
+multiprocess
+peft
+safetensors
 
 # math_eval
 sympy==1.12

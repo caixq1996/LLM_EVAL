@@ -39,8 +39,20 @@ except Exception:
     LLM = None
     AutoTokenizer = None
 
-GROUP_DATASETS = ('aime25x8,amc23x8,aime24x8', 'minerva_math,olympiadbench,math500')
-EXPORT_ROOT = (Path(os.getenv("WORK_HOME", "/data/giil/caixq")) / "export").resolve()
+_DEFAULT_GROUP_DATASETS = (
+    'aime25x8,amc23x8,aime24x8',
+    'minerva_math,olympiadbench,math500',
+)
+GROUP_DATASETS = (
+    os.getenv("EVAL_GROUP1_DATASETS", _DEFAULT_GROUP_DATASETS[0]),
+    os.getenv("EVAL_GROUP2_DATASETS", _DEFAULT_GROUP_DATASETS[1]),
+)
+_export_root_env = os.getenv("EXPORT_ROOT")
+EXPORT_ROOT = (
+    Path(_export_root_env).expanduser().resolve()
+    if _export_root_env
+    else (Path(os.getenv("WORK_HOME", "/data/giil/caixq")) / "export").resolve()
+)
 
 def _safe_rmtree(p: Path):
     def _onerror(func, path, exc_info):
@@ -206,12 +218,16 @@ def build_args_template(prompt_type, max_tokens, use_vllm, vllm_batch_size, pipe
     import types
     args = types.SimpleNamespace()
     args.data_names = ''
-    args.data_dir = './data'
+    args.data_dir = os.getenv("EVAL_DATA_DIR", "./data")
     args.model_name_or_path = ''
     args.output_dir = ''
     args.prompt_type = prompt_type
     args.split = 'test'
-    args.num_test_sample = -1
+    num_test_sample = os.getenv("EVAL_NUM_TEST_SAMPLE")
+    if num_test_sample is not None and str(num_test_sample).strip() != "":
+        args.num_test_sample = int(num_test_sample)
+    else:
+        args.num_test_sample = -1
     args.seed = 0
     args.start = 0
     args.end = -1
@@ -677,62 +693,62 @@ def main():
                     else:
                         print(f'[{_now()}] ⏭ 跳过 base-only：{base_key}', flush=True)
                 base_done[base_key] = True
-            
-        if args.skip_step_eval:
-            continue
 
-        # 单 run 目录模式: runs 已经是 global_step_* 目录列表，直接使用
-        # 多 run 目录模式: run 是 run_name 目录，需要在其下查找 global_step_*
-        if is_single_run:
-            step_dirs = [run]  # run 本身就是 step_dir
-        else:
-            step_dirs = list_step_dirs(run, only_latest=False)
-        
-        if not step_dirs:
-            print(f'[WARN] 该 run 无可导出的分片模型：{run_name}')
-            continue
-        for step_dir in step_dirs:
-            # 为保持输出目录结构一致，使用 lookup_name 而非 run_name
+            if args.skip_step_eval:
+                continue
+
+            # 单 run 目录模式: runs 已经是 global_step_* 目录列表，直接使用
+            # 多 run 目录模式: run 是 run_name 目录，需要在其下查找 global_step_*
             if is_single_run:
-                tag = f'{lookup_name}__{step_dir.name}'
+                step_dirs = [run]  # run 本身就是 step_dir
             else:
-                tag = f'{run_name}__{step_dir.name}'
-            missing = check_missing_by_group(out_root=out_root, run_name=tag)
-            need_any = any((missing[g] for g in missing))
-            if not need_any:
-                print(f'[{_now()}] ⏭ 跳过：{tag}', flush=True)
+                step_dirs = list_step_dirs(run, only_latest=False)
+
+            if not step_dirs:
+                print(f'[WARN] 该 run 无可导出的分片模型：{run_name}')
                 continue
-            
-            # 检测 adapter 格式并获取可能的 PiSSA/QPiSSA 后缀
-            step_base_dir = base_dir
-            if is_adapter_checkpoint(step_dir):
-                adapter_suffix = get_adapter_base_model_suffix(step_dir)
-                if adapter_suffix:
-                    # 重新查找带后缀的 base model（如 _pissa_base, _qpissa_base）
-                    step_base_dir = find_base_model_dir(args.base_root, lookup_name, adapter_suffix=adapter_suffix)
-                    if step_base_dir is None or not has_hf_weights(step_base_dir):
-                        print(f'[{_now()}] [WARN] 跳过：{tag}（找不到 {adapter_suffix} base model）', flush=True)
-                        continue
-                    print(f'[{_now()}] ℹ️  使用特殊 base: {step_base_dir.name}', flush=True)
+            for step_dir in step_dirs:
+                # 为保持输出目录结构一致，使用 lookup_name 而非 run_name
+                if is_single_run:
+                    tag = f'{lookup_name}__{step_dir.name}'
                 else:
-                    print(f'[{_now()}] ℹ️  检测到 adapter checkpoint: {tag}', flush=True)
-            
-            try:
-                hf_dir = export_one_step_to_hf(step_dir, step_base_dir, export_root)
-            except Exception as e:
-                print(f'[{_now()}] [WARN] 导出失败：{tag} -> {e}', flush=True)
-                continue
-            payload = {
-                'run_name': tag, 'model_dir': str(hf_dir), 'out_root': str(out_root),
-                'prompt_type': args.prompt_type, 'max_tokens': int(args.max_tokens_per_call),
-                'use_vllm': bool(args.use_vllm), 'vllm_batch_size': int(args.vllm_batch_size),
-                'pipeline_parallel_size': int(args.pipeline_parallel_size), 'missing': missing,
-                'temperature_g1': float(args.temperature_g1), 'temperature_g2': float(args.temperature_g2),
-                'n_sampling_g1': int(args.n_sampling_g1), 'n_sampling_g2': int(args.n_sampling_g2),
-                # [FIX] 在 payload 中加入分片参数
-                'shard_id': args.shard_id, 'num_shards': args.num_shards
-            }
-            enqueue(payload)
+                    tag = f'{run_name}__{step_dir.name}'
+                missing = check_missing_by_group(out_root=out_root, run_name=tag)
+                need_any = any((missing[g] for g in missing))
+                if not need_any:
+                    print(f'[{_now()}] ⏭ 跳过：{tag}', flush=True)
+                    continue
+
+                # 检测 adapter 格式并获取可能的 PiSSA/QPiSSA 后缀
+                step_base_dir = base_dir
+                if is_adapter_checkpoint(step_dir):
+                    adapter_suffix = get_adapter_base_model_suffix(step_dir)
+                    if adapter_suffix:
+                        # 重新查找带后缀的 base model（如 _pissa_base, _qpissa_base）
+                        step_base_dir = find_base_model_dir(args.base_root, lookup_name, adapter_suffix=adapter_suffix)
+                        if step_base_dir is None or not has_hf_weights(step_base_dir):
+                            print(f'[{_now()}] [WARN] 跳过：{tag}（找不到 {adapter_suffix} base model）', flush=True)
+                            continue
+                        print(f'[{_now()}] ℹ️  使用特殊 base: {step_base_dir.name}', flush=True)
+                    else:
+                        print(f'[{_now()}] ℹ️  检测到 adapter checkpoint: {tag}', flush=True)
+
+                try:
+                    hf_dir = export_one_step_to_hf(step_dir, step_base_dir, export_root)
+                except Exception as e:
+                    print(f'[{_now()}] [WARN] 导出失败：{tag} -> {e}', flush=True)
+                    continue
+                payload = {
+                    'run_name': tag, 'model_dir': str(hf_dir), 'out_root': str(out_root),
+                    'prompt_type': args.prompt_type, 'max_tokens': int(args.max_tokens_per_call),
+                    'use_vllm': bool(args.use_vllm), 'vllm_batch_size': int(args.vllm_batch_size),
+                    'pipeline_parallel_size': int(args.pipeline_parallel_size), 'missing': missing,
+                    'temperature_g1': float(args.temperature_g1), 'temperature_g2': float(args.temperature_g2),
+                    'n_sampling_g1': int(args.n_sampling_g1), 'n_sampling_g2': int(args.n_sampling_g2),
+                    # [FIX] 在 payload 中加入分片参数
+                    'shard_id': args.shard_id, 'num_shards': args.num_shards
+                }
+                enqueue(payload)
     finally:
         for _ in workers:
             task_queue.put(None)

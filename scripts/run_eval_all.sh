@@ -51,6 +51,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${REPO_ROOT}"
+
 if [[ $RUN_EVAL_MULTI_SUBMIT == "true" ]]; then
   RUN_EVAL_SUBMIT=1
 fi
@@ -136,7 +141,7 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
            -v RUN_EVAL_MULTI_SUBMIT=false \
            -v KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF}" \
            -V \
-           "$0"
+           "$SCRIPT_PATH"
     else
       echo "[INFO] MULTI_SUBMIT_BASE_ONCE=false, skipping base-only job."
     fi
@@ -162,7 +167,7 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
            -v RUN_EVAL_SUBMITTED=1 \
            -v KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF}" \
            -V \
-           "$0"
+           "$SCRIPT_PATH"
     done
     
     echo "[INFO] Submitted ${#SUBDIRS[@]} jobs."
@@ -197,7 +202,7 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_SUBMIT:-0}
        -v NUM_GPUS="${n_gpus}" \
        -v RUN_EVAL_SUBMITTED=1 \
        -V \
-       "$0"
+       "$SCRIPT_PATH"
   exit 0
 fi
 
@@ -208,13 +213,27 @@ PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
 MAX_TOKENS="${MAX_TOKENS:-3072}"
 
 # 1. 自动探测 GPU 数量
-if [[ -z "${NUM_GPUS:-}" ]]; then
-  if command -v nvidia-smi >/dev/null 2>&1; then
-    NUM_GPUS=$(nvidia-smi --list-gpus | grep -c '^GPU')
-    [[ "${NUM_GPUS}" -ge 1 ]] || NUM_GPUS=1
-  else
-    NUM_GPUS=1
+GPU_LIST=()
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  IFS=',' read -ra _GPU_RAW <<< "${CUDA_VISIBLE_DEVICES}"
+  for g in "${_GPU_RAW[@]}"; do
+    g="${g//[[:space:]]/}"
+    [[ -n "$g" ]] && GPU_LIST+=("$g")
+  done
+  NUM_GPUS="${#GPU_LIST[@]}"
+  [[ "${NUM_GPUS}" -ge 1 ]] || NUM_GPUS=1
+else
+  if [[ -z "${NUM_GPUS:-}" ]]; then
+    if command -v nvidia-smi >/dev/null 2>&1; then
+      NUM_GPUS=$(nvidia-smi --list-gpus | grep -c '^GPU')
+      [[ "${NUM_GPUS}" -ge 1 ]] || NUM_GPUS=1
+    else
+      NUM_GPUS=1
+    fi
   fi
+  for ((i=0; i<NUM_GPUS; i++)); do
+    GPU_LIST+=("$i")
+  done
 fi
 
 PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
@@ -229,7 +248,11 @@ fi
 
 # MODEL_ROOT 应该是「这一堆 checkpoint 的根目录」，下面有多个 run 目录
 # 例如: /data/.../ckpts/noise_rlvr_llama-3.2-3B-Instruct/<run_name>/global_step_xxx
-MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
+if [[ $MODEL_PATH == "giil" ]]; then
+  MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
+else
+  MODEL_ROOT="${MODEL_ROOT:-$HOME/project/${PROJECT_NAME}/checkpoints/${EXP_NAMES}}"
+fi
 
 # Multi-submit subjobs: skip base eval by default to avoid duplication.
 MULTI_SUBMIT_SKIP_BASE_EVAL="${MULTI_SUBMIT_SKIP_BASE_EVAL:-true}"
@@ -311,11 +334,12 @@ start_times=()
 failed_pids=()
 
 for ((i=0; i<NUM_GPUS; i++)); do
+    gpu_id="${GPU_LIST[$i]}"
     # 使用 _EXP_TAG 保持日志命名一致（multi-submit 时为算法名）
     LOG_FILE="eval_log/eval_all/eval_gpus/gpu_worker.${TS}.${_EXP_TAG}.rank_${i}.log"
-    echo "[INFO] Starting Worker $i/$NUM_GPUS on GPU $i... Log: $LOG_FILE"
+    echo "[INFO] Starting Worker $i/$NUM_GPUS on GPU $gpu_id... Log: $LOG_FILE"
 
-    CUDA_VISIBLE_DEVICES=$i "$PYTHON_BIN" -u tools/run_qwen_eval_all_shared.py \
+    CUDA_VISIBLE_DEVICES=$gpu_id "$PYTHON_BIN" -u tools/run_qwen_eval_all_shared.py \
       "${base_args[@]}" \
       --nproc 1 \
       --shard_id "$i" \
@@ -374,9 +398,15 @@ done
 
 if [[ ${#failed_pids[@]} -gt 0 ]]; then
     echo "[WARN] The following workers were terminated due to timeout: ${failed_pids[*]}"
+    exit_status=1
 fi
 
 echo "[INFO] All eval workers finished."
+
+if [[ "$exit_status" -ne 0 ]]; then
+    echo "[ERROR] One or more workers failed. Skip merge."
+    exit "$exit_status"
+fi
 
 # =======================================================
 # 3. 合并结果 (Merge Shards)
@@ -384,7 +414,7 @@ echo "[INFO] All eval workers finished."
 
 echo "[INFO] Tasks completed. Starting merge process..."
 
-cd "$PWD"  # 确保还在 repo 根目录（有 tools/merge_results.py）
+cd "${REPO_ROOT}"  # 确保还在 repo 根目录（有 tools/merge_results.py）
 
 # ---------- 3.1 合并 base__* 结果 ----------
 if [ "$SKIP_BASE_EVAL" != "true" ]; then
