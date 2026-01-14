@@ -39,6 +39,7 @@ cd "${EVAL_ROOT}"
 
 PROJECT_NAME="VI-CURL-BiasVar"
 EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
+EVAL_SUBDIR="${EVAL_SUBDIR:-eval_log_v2/vi_curl}"
 
 # -------------------------------------------------------
 # Parse command line arguments
@@ -92,9 +93,9 @@ export TZ='JST-9'
 _TS="$(date +%Y%m%d_%H%M%S)"
 
 if [[ -n "${RUN_SUBMITTED:-}" ]]; then
-  _LOG_BASE="${EVAL_ROOT}/eval_log/vi_curl/bias_variance_logs/qsub_submit"
+  _LOG_BASE="${EVAL_ROOT}/${EVAL_SUBDIR}/bias_variance_logs/qsub_submit"
 else
-  _LOG_BASE="${EVAL_ROOT}/eval_log/vi_curl/bias_variance_logs/main"
+  _LOG_BASE="${EVAL_ROOT}/${EVAL_SUBDIR}/bias_variance_logs/main"
 fi
 mkdir -p "${_LOG_BASE}"
 
@@ -265,7 +266,26 @@ BETA_SCHEDULE_MODE="${BETA_SCHEDULE_MODE:-rescaled}"   # train | rescaled
 BETA_REF_STEPS="${BETA_REF_STEPS:-20-313:20}"
 BETA_SOURCE="${BETA_SOURCE:-log}"                      # compute | log
 BETA_LOG_PATH="${BETA_LOG_PATH:-}"
-BETA_LOG_ROOT="${BETA_LOG_ROOT:-${EVAL_ROOT}/../VI-CURL/wandb}"
+
+# Auto-detect BETA_LOG_ROOT from MODEL_ROOT if wandb logs exist there
+_auto_detect_beta_log_root() {
+  local mr="${MODEL_ROOT}"
+  # Single run: MODEL_ROOT/wandb/wandb exists
+  if [[ -d "${mr}/wandb/wandb" ]]; then
+    echo "${mr}/wandb/wandb"; return 0
+  fi
+  # Parent dir: check first child for wandb
+  local sub; sub=$(find "${mr}" -maxdepth 1 -mindepth 1 -type d -name "*curl*" 2>/dev/null | head -1)
+  if [[ -n "${sub}" ]] && [[ -d "${sub}/wandb/wandb" ]]; then
+    echo "${mr}"; return 0
+  fi
+  # Fallback
+  echo "${EVAL_ROOT}/../VI-CURL/wandb"
+}
+if [[ -z "${BETA_LOG_ROOT:-}" ]]; then
+  BETA_LOG_ROOT="$(_auto_detect_beta_log_root)"
+  echo "[INFO] Auto-detected BETA_LOG_ROOT=${BETA_LOG_ROOT}"
+fi
 USE_LOG_TAU="${USE_LOG_TAU:-true}"
 
 STEPS="${STEPS:-}"
@@ -309,27 +329,38 @@ BASELINE_MODE="${BASELINE_MODE:-auto}"   # auto | none
 
 # -----------------------------
 # Output/log dirs (NEW: separate from original grad_variance)
+# tau_mode suffix: "tau_log" = use training tau, "tau_beta" = compute from beta
 # -----------------------------
-GRAD_OUT_DIR="${GRAD_OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_bias_variance}"
-GRAD_LOG_DIR="${GRAD_LOG_DIR:-${EVAL_ROOT}/eval_log/vi_curl/grad_bias_variance_logs}"
+if [[ "${USE_LOG_TAU}" == "true" ]]; then
+  TAU_MODE_SUFFIX="tau_log"
+else
+  TAU_MODE_SUFFIX="tau_beta"
+fi
+
+GRAD_OUT_DIR="${GRAD_OUT_DIR:-${EVAL_ROOT}/${EVAL_SUBDIR}/grad_bias_variance_${TAU_MODE_SUFFIX}}"
+GRAD_LOG_DIR="${GRAD_LOG_DIR:-${EVAL_ROOT}/${EVAL_SUBDIR}/grad_bias_variance_${TAU_MODE_SUFFIX}_logs}"
 GRAD_AUTO_MERGE_PARTS="${GRAD_AUTO_MERGE_PARTS:-true}"
 GRAD_MERGE_DELETE_PARTS="${GRAD_MERGE_DELETE_PARTS:-false}"
 GRAD_MERGE_ONLY="${GRAD_MERGE_ONLY:-false}"
 GRAD_TAG="${GRAD_TAG:-}"
 PLOT_BASELINE_FULL_ONLY="${PLOT_BASELINE_FULL_ONLY:-true}"
 
-PLOT_OUT_DIR="${PLOT_OUT_DIR:-${EVAL_ROOT}/eval_log/vi_curl/bias_variance_plots}"
+PLOT_OUT_DIR="${PLOT_OUT_DIR:-${EVAL_ROOT}/${EVAL_SUBDIR}/bias_variance_plots_${TAU_MODE_SUFFIX}}"
+VAR_PLOT_OUT_DIR="${VAR_PLOT_OUT_DIR:-${EVAL_ROOT}/${EVAL_SUBDIR}/variance_absolute_${TAU_MODE_SUFFIX}}"
 FIGURES_DIR="${FIGURES_DIR:-${HOME}/works/RLVR/VI-CURL/figures}"
 
 mkdir -p "${GRAD_OUT_DIR}"
 mkdir -p "${GRAD_LOG_DIR}"
 mkdir -p "${PLOT_OUT_DIR}"
+mkdir -p "${VAR_PLOT_OUT_DIR}"
 
 echo "[INFO] Job started at $(date). Detected ${NUM_GPUS} GPUs."
+echo "[INFO] USE_LOG_TAU=${USE_LOG_TAU} (mode: ${TAU_MODE_SUFFIX})"
 echo "[INFO] MODEL_ROOT=${MODEL_ROOT}"
 echo "[INFO] PROMPT_FILE=${PROMPT_FILE} (field=${PROMPT_FIELD}, type=${PROMPT_TYPE})"
 echo "[INFO] GRAD_OUT_DIR=${GRAD_OUT_DIR}"
 echo "[INFO] PLOT_OUT_DIR=${PLOT_OUT_DIR}"
+echo "[INFO] VAR_PLOT_OUT_DIR=${VAR_PLOT_OUT_DIR}"
 
 # -----------------------------
 # /dev/shm HF export cleanup function
@@ -387,10 +418,17 @@ run_gradvar() {
 run_plots() {
   echo "[INFO] === Generating bias-variance plots ==="
   
+  # Bias-variance combined plots
   "${PYTHON_BIN}" "${EVAL_ROOT}/tools/plot_bias_variance.py" \
     --grad_variance_dir "${GRAD_OUT_DIR}" \
     --out_dir "${PLOT_OUT_DIR}" \
     --paper_figure
+  
+  # Variance absolute plots (kept vs full)
+  echo "[INFO] === Generating variance absolute plots ==="
+  "${PYTHON_BIN}" "${EVAL_ROOT}/tools/plot_variance_absolute.py" \
+    --grad_variance_dir "${GRAD_OUT_DIR}" \
+    --out_dir "${VAR_PLOT_OUT_DIR}"
   
   # Copy key figures to paper directory
   if [[ -d "${FIGURES_DIR}" ]]; then
@@ -403,6 +441,16 @@ run_plots() {
       fi
     done
     
+    # Copy variance absolute figures
+    for f in "${VAR_PLOT_OUT_DIR}"/*.pdf; do
+      if [[ -f "$f" ]]; then
+        base="$(basename "$f")"
+        # Add tau mode suffix to figure names
+        new_name="${base%.pdf}_${TAU_MODE_SUFFIX}.pdf"
+        cp -v "$f" "${FIGURES_DIR}/${new_name}"
+      fi
+    done
+    
     # Copy model-specific figures with LaTeX-friendly names
     for model in "qwen" "deepseek"; do
       for f in "${PLOT_OUT_DIR}"/*"${model}"*.pdf; do
@@ -410,23 +458,23 @@ run_plots() {
           base="$(basename "$f")"
           if [[ "$base" == *"combined"* ]]; then
             if [[ "$model" == "qwen" ]]; then
-              cp -v "$f" "${FIGURES_DIR}/bias_variance_qwen.pdf"
+              cp -v "$f" "${FIGURES_DIR}/bias_variance_qwen_${TAU_MODE_SUFFIX}.pdf"
             elif [[ "$model" == "deepseek" ]]; then
-              cp -v "$f" "${FIGURES_DIR}/bias_variance_deepseek.pdf"
+              cp -v "$f" "${FIGURES_DIR}/bias_variance_deepseek_${TAU_MODE_SUFFIX}.pdf"
             fi
           fi
           if [[ "$base" == *"bias_vs_beta"* ]]; then
             if [[ "$model" == "qwen" ]]; then
-              cp -v "$f" "${FIGURES_DIR}/bias_vs_beta_qwen.pdf"
+              cp -v "$f" "${FIGURES_DIR}/bias_vs_beta_qwen_${TAU_MODE_SUFFIX}.pdf"
             elif [[ "$model" == "deepseek" ]]; then
-              cp -v "$f" "${FIGURES_DIR}/bias_vs_beta_deepseek.pdf"
+              cp -v "$f" "${FIGURES_DIR}/bias_vs_beta_deepseek_${TAU_MODE_SUFFIX}.pdf"
             fi
           fi
           if [[ "$base" == *"variance_ratio_with_bias"* ]]; then
             if [[ "$model" == "qwen" ]]; then
-              cp -v "$f" "${FIGURES_DIR}/variance_ratio_with_bias_qwen.pdf"
+              cp -v "$f" "${FIGURES_DIR}/variance_ratio_with_bias_qwen_${TAU_MODE_SUFFIX}.pdf"
             elif [[ "$model" == "deepseek" ]]; then
-              cp -v "$f" "${FIGURES_DIR}/variance_ratio_with_bias_deepseek.pdf"
+              cp -v "$f" "${FIGURES_DIR}/variance_ratio_with_bias_deepseek_${TAU_MODE_SUFFIX}.pdf"
             fi
           fi
         fi

@@ -1,3 +1,48 @@
+# SGE/PBS job output files
 miyabi_logs/
 *.o*
 *.log
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Evaluation results and logs (large directories)
+eval_log/
+eval_log_v2/
+outputs/
+wandb/
+
+# Checkpoints
+checkpoints/
+*.pt
+*.ckpt
+*.safetensors
+
+# Data files (if large)
+# data/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+
+# IDE settings
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.swp
+*~
+tmp/

@@ -32,7 +32,15 @@ root = Path(os.environ["CHECKPOINT_ROOT"])
 pattern = os.environ.get("RUN_FILTER", "").strip()
 regex = re.compile(pattern) if pattern else None
 paths = root.rglob("adapter_config.json")
-runs = sorted({p.parents[3].name for p in paths})
+runs = set()
+for p in paths:
+    try:
+        rel = p.relative_to(root)
+    except ValueError:
+        continue
+    if rel.parts:
+        runs.add(rel.parts[0])
+runs = sorted(runs)
 if regex:
     runs = [r for r in runs if regex.search(r)]
 print("\n".join(runs))
@@ -48,7 +56,7 @@ if [[ ${#RUN_LIST[@]} -eq 0 ]]; then
   exit 1
 fi
 
-CMD=($PYTHON "$PROJECT_ROOT/LLM_EVAL/tools/plot_opra_loss_landscape.py" \
+CMD=($PYTHON "$PROJECT_ROOT/LLM_EVAL/tools/opra_plot/plot_opra_loss_landscape.py" \
   --checkpoint_root "$CHECKPOINT_ROOT" \
   --prompt_file "$PROMPT_FILE" \
   --prompt_field "$PROMPT_FIELD" \

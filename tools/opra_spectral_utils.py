@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import os
+import json
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import torch
@@ -14,7 +16,10 @@ _KNOWN_VARIANTS = {
     "adalora",
     "dora",
     "pissa",
+    "qpissa",
     "qlora",
+    "olora",
+    "rslora",
     "oft",
 }
 
@@ -32,6 +37,8 @@ def iter_lora_modules(model: nn.Module):
     for name, module in model.named_modules():
         if hasattr(module, "lora_A") and hasattr(module, "lora_B"):
             yield name, module
+        elif hasattr(module, "oft_R"):
+            yield name, module
 
 
 def iter_weight_modules(model: nn.Module):
@@ -39,6 +46,162 @@ def iter_weight_modules(model: nn.Module):
         weight = getattr(module, "weight", None)
         if isinstance(weight, torch.Tensor) and weight.dim() == 2:
             yield name, module
+
+
+def _adapter_max_rank(adapter_path: "Path") -> Optional[int]:
+    from pathlib import Path
+    adapter_path = adapter_path if isinstance(adapter_path, Path) else Path(str(adapter_path))
+    candidates = [
+        adapter_path / "adapter_model.safetensors",
+        adapter_path / "lora_adapter" / "adapter_model.safetensors",
+    ]
+    safetensors_path = next((p for p in candidates if p.exists()), None)
+    if safetensors_path is None:
+        return None
+    try:
+        from safetensors import safe_open
+    except Exception:
+        return None
+    max_rank = 0
+    try:
+        with safe_open(str(safetensors_path), framework="pt") as f:
+            for key in f.keys():
+                if ".lora_A." in key or key.endswith(".lora_A") or ".lora_E." in key or key.endswith(".lora_E"):
+                    shape = f.get_tensor(key).shape
+                    if shape:
+                        max_rank = max(max_rank, int(shape[0]))
+    except Exception as exc:
+        print(f"[WARN] Failed to inspect {safetensors_path}: {exc}")
+        return None
+    return max_rank if max_rank > 0 else None
+
+
+def _adapter_rank_range(adapter_path: "Path") -> Tuple[Optional[int], Optional[int]]:
+    try:
+        from safetensors import safe_open
+    except Exception:
+        return (None, None)
+    safetensors_path = adapter_path / "adapter_model.safetensors"
+    if not safetensors_path.exists():
+        return (None, None)
+    min_rank = None
+    max_rank = 0
+    try:
+        with safe_open(str(safetensors_path), framework="pt") as f:
+            for key in f.keys():
+                if ".lora_A." in key or key.endswith(".lora_A") or ".lora_E." in key or key.endswith(".lora_E"):
+                    shape = f.get_tensor(key).shape
+                    if shape:
+                        rank = int(shape[0])
+                        max_rank = max(max_rank, rank)
+                        min_rank = rank if min_rank is None else min(min_rank, rank)
+    except Exception as exc:
+        print(f"[WARN] Failed to inspect {safetensors_path}: {exc}")
+        return (None, None)
+    if max_rank <= 0:
+        return (None, None)
+    return (min_rank, max_rank)
+
+
+def _load_raw_adapter_config(adapter_path: "Path") -> Optional[dict]:
+    config_path = adapter_path / "adapter_config.json"
+    if not config_path.exists():
+        return None
+    try:
+        return json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"[WARN] Failed to read {config_path}: {exc}")
+        return None
+
+
+def load_peft_config(adapter_path) -> Optional["PeftConfig"]:
+    try:
+        from peft import PeftConfig
+    except Exception:
+        return None
+    raw_cfg = _load_raw_adapter_config(adapter_path)
+    raw_rank_pattern_zero = False
+    raw_init_r = None
+    raw_r = None
+    if isinstance(raw_cfg, dict):
+        raw_init_r = raw_cfg.get("init_r")
+        raw_r = raw_cfg.get("r")
+        raw_rank_pattern = raw_cfg.get("rank_pattern")
+        if isinstance(raw_rank_pattern, dict) and raw_rank_pattern:
+            try:
+                raw_rank_pattern_zero = all(sum(v) == 0 for v in raw_rank_pattern.values())
+            except Exception:
+                raw_rank_pattern_zero = False
+    try:
+        config = PeftConfig.from_pretrained(str(adapter_path))
+    except Exception as exc:
+        print(f"[WARN] Failed to load adapter config from {adapter_path}: {exc}")
+        return None
+    peft_type = getattr(config, "peft_type", "")
+    peft_type_name = None
+    if hasattr(peft_type, "value"):
+        peft_type_name = peft_type.value
+    elif hasattr(peft_type, "name"):
+        peft_type_name = peft_type.name
+    else:
+        peft_type_name = str(peft_type)
+    if str(peft_type_name).upper() == "ADALORA":
+        init_r = getattr(config, "init_r", None)
+        r = getattr(config, "r", None)
+        if init_r in (None, 0) and r not in (None, 0):
+            config.init_r = r
+            init_r = r
+        if r in (None, 0) and init_r not in (None, 0):
+            config.r = init_r
+        rank_pattern = getattr(config, "rank_pattern", None)
+        if raw_rank_pattern_zero:
+            config.rank_pattern = None
+            setattr(config, "_ignore_mismatched_sizes", True)
+            print("[INFO] AdaLora: raw rank_pattern all-zero; drop rank_pattern for load")
+        elif rank_pattern:
+            rank_sums = []
+            for v in rank_pattern.values():
+                try:
+                    rank_sums.append(sum(v) if isinstance(v, (list, tuple)) else int(v))
+                except Exception:
+                    continue
+            rank_pattern_max = max(rank_sums) if rank_sums else None
+            rank_pattern_min = min(rank_sums) if rank_sums else None
+            if rank_pattern_max == 0:
+                config.rank_pattern = None
+                setattr(config, "_ignore_mismatched_sizes", True)
+                print("[INFO] AdaLora: rank_pattern all-zero; ignore rank_pattern for load")
+            else:
+                adapter_min_rank, adapter_max_rank = _adapter_rank_range(adapter_path)
+                if rank_pattern_min == 0 and adapter_max_rank:
+                    config.rank_pattern = None
+                    setattr(config, "_ignore_mismatched_sizes", True)
+                    print("[INFO] AdaLora: rank_pattern has zero entries; ignore for load")
+                elif adapter_max_rank is not None and rank_pattern_max is not None and adapter_max_rank > rank_pattern_max:
+                    config.rank_pattern = None
+                    setattr(config, "_ignore_mismatched_sizes", True)
+                    print(f"[INFO] AdaLora: ignoring rank_pattern for load (rank_pattern_max={rank_pattern_max}, adapter_max={adapter_max_rank})")
+                elif adapter_min_rank is not None and adapter_max_rank is not None:
+                    if adapter_min_rank == adapter_max_rank and (
+                        rank_pattern_min != adapter_min_rank or rank_pattern_max != adapter_max_rank
+                    ):
+                        config.rank_pattern = None
+                        setattr(config, "_ignore_mismatched_sizes", True)
+                        print(
+                            "[INFO] AdaLora: adapter weights use full rank; drop rank_pattern for load "
+                            f"(adapter_rank={adapter_max_rank}, rank_pattern_range={rank_pattern_min}-{rank_pattern_max})"
+                        )
+        if raw_rank_pattern_zero:
+            final_r = raw_init_r if isinstance(raw_init_r, int) and raw_init_r > 0 else raw_r
+            if isinstance(final_r, int) and final_r > 0:
+                config.init_r = final_r
+                config.r = final_r
+
+    # Handle OFT adapter weight format mismatch between PEFT versions
+    if str(peft_type_name).upper() == "OFT":
+        setattr(config, "_ignore_mismatched_sizes", True)
+        print("[INFO] OFT: setting ignore_mismatched_sizes=True due to potential weight format differences")
+    return config
 
 
 def get_base_weight(module: nn.Module) -> torch.Tensor:
@@ -52,9 +215,22 @@ def get_base_weight(module: nn.Module) -> torch.Tensor:
 def _get_adapter_items(module: nn.Module) -> List[Tuple[str, object, object]]:
     lora_a = getattr(module, "lora_A", None)
     lora_b = getattr(module, "lora_B", None)
+    oft_r = getattr(module, "oft_R", None)
+
     if isinstance(lora_a, (nn.ModuleDict, nn.ParameterDict)) and isinstance(lora_b, (nn.ModuleDict, nn.ParameterDict)):
         names = sorted(set(lora_a.keys()) & set(lora_b.keys()))
         return [(name, lora_a[name], lora_b[name]) for name in names]
+    
+    # Handle OFT adapters
+    if isinstance(oft_r, (nn.ModuleDict, nn.ParameterDict)):
+        names = sorted(oft_r.keys())
+        # Return oft_R[name] as first item, None as second
+        # compute_lora_delta checks get_delta_weight first, checking a_lin/b_lin only as fallback
+        return [(name, oft_r[name], None) for name in names]
+    
+    if oft_r is not None:
+        return [("default", oft_r, None)]
+
     return [("default", lora_a, lora_b)]
 
 
@@ -108,6 +284,21 @@ def compute_lora_delta(module: nn.Module, *, device: torch.device, dtype: torch.
             continue
         else:
             update = update.detach().to(device=device, dtype=dtype)
+            # Fix for OFT: peft may return the rotation matrix (hidden_size x hidden_size)
+            # instead of the projected delta weight (out_features x in_features)
+            # If so, we need to apply it to the base weight: delta_W = W @ (R - I) or similar
+            # Since get_delta_weight returns the delta, assume it returns W @ (R - I) if shapes match.
+            # If mismatch, assume it returned (R - I) and we need W @ update.
+            base_w = get_base_weight(module)
+            if base_w is not None:
+                base_w_shape = base_w.shape
+                if update.shape != base_w_shape:
+                    # Check if base_W @ update yields correct shape
+                    # Case: K_proj (256, 1536) vs Update (1536, 1536) -> (256, 1536)
+                    if update.shape[0] == base_w_shape[1] and update.shape[1] == base_w_shape[1]: 
+                         # Likely R applied to input
+                         base_w_dev = base_w.detach().to(device=device, dtype=dtype)
+                         update = base_w_dev @ update
         delta = update if delta is None else (delta + update)
     return delta
 
@@ -245,12 +436,73 @@ def resolve_base_model_path(base_model: Optional[str], run_dir: str, search_root
             run_path = run_path.parent
             continue
         break
-    base_name, _ = split_run_name(run_path.name)
+    run_name = run_path.name
+    adapter_suffix = get_adapter_base_model_suffix(run_name)
+    for root in search_roots:
+        base_root = _as_path(root)
+        if not base_root.exists():
+            continue
+        found = find_base_model_dir(base_root, run_name, adapter_suffix=adapter_suffix)
+        if found is not None:
+            return str(found)
+    base_name, _ = split_run_name(run_name)
     for root in search_roots:
         cand = _as_path(root) / base_name
         if cand.exists():
             return str(cand)
     return base_name
+
+
+def get_adapter_base_model_suffix(run_name: str) -> Optional[str]:
+    special_algos = os.environ.get("SPECIAL_ADAPTER_ALGORITHMS", "pissa:_pissa_base,qpissa:_qpissa_base")
+    if not special_algos:
+        return None
+    algo_map = {}
+    for pair in special_algos.split(","):
+        pair = pair.strip()
+        if ":" not in pair:
+            continue
+        algo, suffix = pair.split(":", 1)
+        algo = algo.strip().lower()
+        suffix = suffix.strip()
+        if algo and suffix:
+            algo_map[algo] = suffix
+    if not algo_map:
+        return None
+    run_key = f"_{run_name.lower()}_"
+    for algo, suffix in sorted(algo_map.items(), key=lambda x: len(x[0]), reverse=True):
+        if f"_{algo}_" in run_key:
+            return suffix
+    return None
+
+
+def find_base_model_dir(base_root, run_name: str, adapter_suffix: Optional[str] = None):
+    base_root = _as_path(base_root)
+    if not base_root.exists():
+        return None
+    run_key = _norm(run_name)
+    best = None
+    if adapter_suffix:
+        for d in base_root.iterdir():
+            if not d.is_dir() or not d.name.endswith(adapter_suffix):
+                continue
+            base_name = d.name[: -len(adapter_suffix)]
+            key = _norm(base_name)
+            if key and (key in run_key or run_key in key):
+                if best is None or len(key) > len(_norm(best.name.replace(adapter_suffix, ""))):
+                    best = d
+        if best is not None:
+            return best
+    for d in base_root.iterdir():
+        if not d.is_dir():
+            continue
+        key = _norm(d.name)
+        if not key:
+            continue
+        if key in run_key or run_key in key:
+            if best is None or len(key) > len(_norm(best.name)):
+                best = d
+    return best
 
 
 def list_checkpoint_adapters(run_dir: str, *, only_latest: bool = False) -> List[Tuple[int, str]]:
@@ -264,6 +516,15 @@ def list_checkpoint_adapters(run_dir: str, *, only_latest: bool = False) -> List
         if is_adapter_dir(adapter_dir):
             step = parse_step_from_path(str(step_dir))
             entries.append((step or -1, str(adapter_dir)))
+            continue
+        actor_dir = step_dir / "actor"
+        if is_adapter_dir(actor_dir):
+            step = parse_step_from_path(str(step_dir))
+            entries.append((step or -1, str(actor_dir)))
+            continue
+        if is_adapter_dir(step_dir):
+            step = parse_step_from_path(str(step_dir))
+            entries.append((step or -1, str(step_dir)))
     return entries
 
 
@@ -299,6 +560,8 @@ def collect_run_entries(
         adapter_dir = path.parent / "lora_adapter"
         if is_adapter_dir(adapter_dir):
             entries.append((parse_step_from_path(str(adapter_dir)) or -1, str(adapter_dir), "adapter"))
+        elif is_adapter_dir(path.parent):
+            entries.append((parse_step_from_path(str(path.parent)) or -1, str(path.parent), "adapter"))
         else:
             entries.append((parse_step_from_path(str(path)) or -1, str(path), "full"))
     elif path.name.startswith("global_step_"):
@@ -307,14 +570,20 @@ def collect_run_entries(
         if is_adapter_dir(adapter_dir):
             entries.append((step, str(adapter_dir), "adapter"))
         else:
-            model_dir = path / "actor" / "huggingface"
-            if is_hf_model_dir(model_dir):
-                entries.append((step, str(model_dir), "full"))
+            actor_dir = path / "actor"
+            if is_adapter_dir(actor_dir):
+                entries.append((step, str(actor_dir), "adapter"))
+            else:
+                model_dir = path / "actor" / "huggingface"
+                if is_hf_model_dir(model_dir):
+                    entries.append((step, str(model_dir), "full"))
     elif path.name == "actor":
         step = parse_step_from_path(str(path)) or -1
         adapter_dir = path / "lora_adapter"
         if is_adapter_dir(adapter_dir):
             entries.append((step, str(adapter_dir), "adapter"))
+        elif is_adapter_dir(path):
+            entries.append((step, str(path), "adapter"))
         else:
             model_dir = path / "huggingface"
             if is_hf_model_dir(model_dir):
@@ -337,3 +606,7 @@ def collect_run_entries(
 def _as_path(path_like) -> "Path":
     from pathlib import Path
     return path_like if isinstance(path_like, Path) else Path(str(path_like))
+
+
+def _norm(s: str) -> str:
+    return re.sub("[^a-z0-9]+", "", s.lower())

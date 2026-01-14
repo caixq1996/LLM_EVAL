@@ -28,7 +28,14 @@ import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import sys
+
+TOOLS_DIR = Path(__file__).resolve().parents[1]
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
 from opra_spectral_utils import (
+    load_peft_config,
     collect_run_entries,
     is_adapter_dir,
     is_hf_model_dir,
@@ -119,7 +126,9 @@ def _load_peft_model(base_model: str, adapter_path: Path, *, dtype: torch.dtype,
         raise RuntimeError("peft is required for this script") from exc
 
     model = _load_base_model(base_model, dtype=dtype, device=device, device_map=device_map, trust_remote_code=trust_remote_code)
-    model = PeftModel.from_pretrained(model, str(adapter_path))
+    config = load_peft_config(adapter_path)
+    ignore_mismatched_sizes = bool(getattr(config, "_ignore_mismatched_sizes", False)) if config else False
+    model = PeftModel.from_pretrained(model, str(adapter_path), config=config, is_trainable=False, ignore_mismatched_sizes=ignore_mismatched_sizes)
     model.eval()
     return model
 
@@ -166,7 +175,10 @@ def _collect_reprs(
 
 
 def _compute_pca(x: torch.Tensor, k: int) -> torch.Tensor:
+    # Replace NaN/Inf with 0 to prevent SVD convergence failure
+    x = torch.where(torch.isfinite(x), x, torch.zeros_like(x))
     x_centered = x - x.mean(dim=0, keepdim=True)
+    x_centered = torch.where(torch.isfinite(x_centered), x_centered, torch.zeros_like(x_centered))
     _, _, vh = torch.linalg.svd(x_centered, full_matrices=False)
     return vh[:k, :].transpose(0, 1)
 
@@ -343,8 +355,9 @@ def main() -> None:
         fig.tight_layout()
         out_path = out_dir / f"activation_drift_step_{step}.png"
         fig.savefig(out_path, dpi=300)
+        fig.savefig(out_dir / f"activation_drift_step_{step}.pdf", dpi=300)
         plt.close(fig)
-        print(f"[INFO] Saved plot: {out_path}")
+        print(f"[INFO] Saved plot: {out_path} and .pdf")
 
     df = pd.DataFrame(all_rows)
     df.to_csv(out_dir / "activation_drift.csv", index=False)

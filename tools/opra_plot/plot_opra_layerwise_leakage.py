@@ -25,7 +25,14 @@ import seaborn as sns
 import torch
 from transformers import AutoModelForCausalLM
 
+import sys
+
+TOOLS_DIR = Path(__file__).resolve().parents[1]
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
 from opra_spectral_utils import (
+    load_peft_config,
     compute_lora_delta,
     compute_weight_delta,
     get_base_weight,
@@ -64,7 +71,19 @@ def _load_peft_model(base_model: str, adapter_path: Path, *, dtype: torch.dtype,
         model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=dtype, trust_remote_code=trust_remote_code)
         model.to(device)
     model.eval()
-    model = PeftModel.from_pretrained(model, str(adapter_path))
+    config = load_peft_config(adapter_path)
+    ignore_mismatched_sizes = bool(getattr(config, "_ignore_mismatched_sizes", False)) if config else False
+    try:
+        model = PeftModel.from_pretrained(model, str(adapter_path), config=config, is_trainable=False, ignore_mismatched_sizes=ignore_mismatched_sizes)
+    except Exception as e:
+        error_msg = str(e)
+        if "size mismatch" in error_msg.lower() or "shape" in error_msg.lower():
+            print(f"[WARN] Failed to load adapter from {adapter_path}: weight size mismatch (incompatible PEFT version)")
+            del model
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            return None
+        raise
     model.eval()
     return model
 
@@ -324,8 +343,9 @@ def main() -> None:
         fig.tight_layout(rect=[0, 0, 1, 0.95])
         out_path = out_dir / f"layerwise_leakage_step_{step}.png"
         fig.savefig(out_path, dpi=300)
+        fig.savefig(out_dir / f"layerwise_leakage_step_{step}.pdf", dpi=300)
         plt.close(fig)
-        print(f"[INFO] Saved plot: {out_path}")
+        print(f"[INFO] Saved plot: {out_path} and .pdf")
 
     if base_ref is not None:
         del base_ref

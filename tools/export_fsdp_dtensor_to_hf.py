@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
+from safetensors import safe_open
 try:
     from torch.distributed._tensor.api import DTensor, Shard, Replicate
 except Exception:
@@ -20,6 +21,29 @@ def _rank_id(p):
 def _world_size_from_name(p):
     m = re.search(r'world_size_(\d+)', p.name)
     return int(m.group(1)) if m else -1
+
+
+def _adapter_rank_range(adapter_dir: Path):
+    path = adapter_dir / "adapter_model.safetensors"
+    if not path.exists():
+        return (None, None)
+    min_rank = None
+    max_rank = 0
+    try:
+        with safe_open(str(path), framework="pt") as f:
+            for key in f.keys():
+                if ".lora_A." in key or key.endswith(".lora_A") or ".lora_E." in key or key.endswith(".lora_E"):
+                    shape = f.get_tensor(key).shape
+                    if shape:
+                        rank = int(shape[0])
+                        max_rank = max(max_rank, rank)
+                        min_rank = rank if min_rank is None else min(min_rank, rank)
+    except Exception as exc:
+        print(f"[WARN] Failed to inspect adapter ranks: {exc}")
+        return (None, None)
+    if max_rank <= 0:
+        return (None, None)
+    return (min_rank, max_rank)
 
 
 def _load_all_rank_states(shard_files):
@@ -105,6 +129,27 @@ def export_one_step_to_hf(step_dir, base_model_dir, export_root):
                 if is_adalora:
                     init_r = adapter_cfg.get('init_r', adapter_cfg.get('r', 32))
                     adapter_cfg['r'] = init_r
+                    rank_pattern = adapter_cfg.get('rank_pattern')
+                    if isinstance(rank_pattern, dict) and rank_pattern:
+                        rank_sums = []
+                        for value in rank_pattern.values():
+                            if isinstance(value, list):
+                                rank_sums.append(sum(value))
+                            elif isinstance(value, (int, float)):
+                                rank_sums.append(int(value))
+                        adapter_min_rank = None
+                        adapter_max_rank = None
+                        if rank_sums and min(rank_sums) == 0:
+                            adapter_cfg.pop('rank_pattern', None)
+                            print('[WARN] AdaLoRA rank_pattern contains zero-rank entries; drop for export')
+                        else:
+                            adapter_min_rank, adapter_max_rank = _adapter_rank_range(adapter_dir)
+                        if adapter_min_rank is not None and adapter_max_rank is not None:
+                            if adapter_min_rank == adapter_max_rank and (
+                                min(rank_sums) != adapter_min_rank or max(rank_sums) != adapter_max_rank
+                            ):
+                                adapter_cfg.pop('rank_pattern', None)
+                                print('[WARN] AdaLoRA rank_pattern mismatches adapter weights; drop for export')
                     # Write patched config temporarily
                     with open(adapter_config_path, 'w') as f:
                         json.dump(adapter_cfg, f, indent=2)

@@ -25,7 +25,14 @@ import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM
 
+import sys
+
+TOOLS_DIR = Path(__file__).resolve().parents[1]
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
 from opra_spectral_utils import (
+    load_peft_config,
     compute_lora_delta,
     compute_weight_delta,
     get_base_weight,
@@ -66,7 +73,20 @@ def _load_peft_model(base_model: str, adapter_path: Path, *, dtype: torch.dtype,
         model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=dtype, trust_remote_code=trust_remote_code)
         model.to(device)
     model.eval()
-    model = PeftModel.from_pretrained(model, str(adapter_path))
+    config = load_peft_config(adapter_path)
+    ignore_mismatched_sizes = bool(getattr(config, "_ignore_mismatched_sizes", False)) if config else False
+    try:
+        model = PeftModel.from_pretrained(model, str(adapter_path), config=config, is_trainable=False, ignore_mismatched_sizes=ignore_mismatched_sizes)
+    except Exception as e:
+        error_msg = str(e)
+        if "size mismatch" in error_msg.lower() or "shape" in error_msg.lower():
+            print(f"[WARN] Failed to load adapter from {adapter_path}: weight size mismatch (incompatible PEFT version)")
+            print(f"       Skipping this adapter. Error: {error_msg[:200]}...")
+            del model
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            return None
+        raise
     model.eval()
     return model
 
@@ -240,6 +260,8 @@ def main() -> None:
             adapter_dir = path.parent / "lora_adapter"
             if is_adapter_dir(adapter_dir):
                 entries.append((parse_step_from_path(str(adapter_dir)) or -1, str(adapter_dir), "adapter"))
+            elif is_adapter_dir(path.parent):
+                entries.append((parse_step_from_path(str(path.parent)) or -1, str(path.parent), "adapter"))
             else:
                 entries.append((parse_step_from_path(str(path)) or -1, str(path), "full"))
         elif path.name.startswith("global_step_"):
@@ -248,14 +270,20 @@ def main() -> None:
             if is_adapter_dir(adapter_dir):
                 entries.append((step, str(adapter_dir), "adapter"))
             else:
-                model_dir = path / "actor" / "huggingface"
-                if is_hf_model_dir(model_dir):
-                    entries.append((step, str(model_dir), "full"))
+                actor_dir = path / "actor"
+                if is_adapter_dir(actor_dir):
+                    entries.append((step, str(actor_dir), "adapter"))
+                else:
+                    model_dir = path / "actor" / "huggingface"
+                    if is_hf_model_dir(model_dir):
+                        entries.append((step, str(model_dir), "full"))
         elif path.name == "actor":
             step = parse_step_from_path(str(path)) or -1
             adapter_dir = path / "lora_adapter"
             if is_adapter_dir(adapter_dir):
                 entries.append((step, str(adapter_dir), "adapter"))
+            elif is_adapter_dir(path):
+                entries.append((step, str(path), "adapter"))
             else:
                 model_dir = path / "huggingface"
                 if is_hf_model_dir(model_dir):
@@ -382,8 +410,9 @@ def main() -> None:
     fig.tight_layout()
     out_path = out_dir / "alignment_curve_random.png"
     fig.savefig(out_path, dpi=300)
+    fig.savefig(out_dir / "alignment_curve_random.pdf", dpi=300)
     plt.close(fig)
-    print(f"[INFO] Saved plot: {out_path}")
+    print(f"[INFO] Saved plot: {out_path} and .pdf")
 
 
 if __name__ == "__main__":

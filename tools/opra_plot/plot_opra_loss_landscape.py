@@ -26,7 +26,14 @@ import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import sys
+
+TOOLS_DIR = Path(__file__).resolve().parents[1]
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
 from opra_spectral_utils import (
+    load_peft_config,
     collect_run_entries,
     list_run_dirs,
     resolve_checkpoint_root,
@@ -153,7 +160,19 @@ def _load_peft_model(base_model: str, adapter_path: Path, *, dtype: torch.dtype,
         model.to(device)
     model.eval()
     model.config.use_cache = False
-    model = PeftModel.from_pretrained(model, str(adapter_path))
+    config = load_peft_config(adapter_path)
+    ignore_mismatched_sizes = bool(getattr(config, "_ignore_mismatched_sizes", False)) if config else False
+    try:
+        model = PeftModel.from_pretrained(model, str(adapter_path), config=config, is_trainable=False, ignore_mismatched_sizes=ignore_mismatched_sizes)
+    except Exception as e:
+        error_msg = str(e)
+        if "size mismatch" in error_msg.lower() or "shape" in error_msg.lower():
+            print(f"[WARN] Failed to load adapter from {adapter_path}: weight size mismatch (incompatible PEFT version)")
+            del model
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            return None
+        raise
     model.eval()
     _ensure_adalora_trainable_name(model)
     return model
@@ -404,8 +423,9 @@ def main() -> None:
         fig2d.tight_layout(rect=[0, 0, 1, 0.95])
         out_2d = out_dir / f"loss_landscape_2d_step_{step}.png"
         fig2d.savefig(out_2d, dpi=300)
+        fig2d.savefig(out_dir / f"loss_landscape_2d_step_{step}.pdf", dpi=300)
         plt.close(fig2d)
-        print(f"[INFO] Saved plot: {out_2d}")
+        print(f"[INFO] Saved plot: {out_2d} and .pdf")
 
         fig3d = plt.figure(figsize=(6 * len(labels), 5))
         for idx, label in enumerate(labels, start=1):
@@ -419,8 +439,9 @@ def main() -> None:
         fig3d.tight_layout(rect=[0, 0, 1, 0.95])
         out_3d = out_dir / f"loss_landscape_3d_step_{step}.png"
         fig3d.savefig(out_3d, dpi=300)
+        fig3d.savefig(out_dir / f"loss_landscape_3d_step_{step}.pdf", dpi=300)
         plt.close(fig3d)
-        print(f"[INFO] Saved plot: {out_3d}")
+        print(f"[INFO] Saved plot: {out_3d} and .pdf")
 
 
 if __name__ == "__main__":

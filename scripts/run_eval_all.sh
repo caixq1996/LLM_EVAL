@@ -8,9 +8,10 @@
 set -x
 set -e   # 如果希望有 worker 挂掉就整 job 失败，可以打开
 
-PROJECT_NAME="VI-CURL"
-EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
+PROJECT_NAME="OPRA"
+EXP_NAMES="${EXP_NAMES:-OPRA-LoRA}"
 MODEL_PATH="${MODEL_PATH:-checkpoints}" # giil | checkpoints
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-256}"
 
 # 特殊 adapter 算法配置（需要特殊 base model 的算法）
 # 格式: "algorithm1:suffix1,algorithm2:suffix2,..."
@@ -230,7 +231,6 @@ fi
 # 例如: /data/.../ckpts/noise_rlvr_llama-3.2-3B-Instruct/<run_name>/global_step_xxx
 MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
 
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
 # Multi-submit subjobs: skip base eval by default to avoid duplication.
 MULTI_SUBMIT_SKIP_BASE_EVAL="${MULTI_SUBMIT_SKIP_BASE_EVAL:-true}"
 if [[ -n "${SUB_EXP_NAME:-}" && "${MULTI_SUBMIT_SKIP_BASE_EVAL}" == "true" ]]; then
@@ -262,8 +262,8 @@ export EVAL_ONE_MODEL_TIMEOUT="${EVAL_ONE_MODEL_TIMEOUT:-21600}"
 
 # PASS@k 列表（受 MAX_SAMPLE_NUMS 限制）
 if [[ -z "${PASS_AT_KS:-}" ]]; then
-  # default_pass_ks=(1 8 16 32 64 128 256)
-  default_pass_ks=(1 8)
+  default_pass_ks=(1 8 16 32 64 128 256)
+  # default_pass_ks=(1 8)
   pass_ks=()
   for k in "${default_pass_ks[@]}"; do
     if (( k > 0 && k <= MAX_SAMPLE_NUMS )) && [[ " ${pass_ks[*]} " != *" $k "* ]]; then

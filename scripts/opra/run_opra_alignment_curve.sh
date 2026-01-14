@@ -10,6 +10,11 @@ RUNS=${RUNS:-}
 RUN_FILTER=${RUN_FILTER:-}
 PRINCIPAL_RANK=${PRINCIPAL_RANK:-16}
 OUT_DIR=${OUT_DIR:-"$PROJECT_ROOT/LLM_EVAL/eval_log/opra_alignment"}
+ETA_SOURCE=${ETA_SOURCE:-both}
+WANDB_ROOT=${WANDB_ROOT:-"$PROJECT_ROOT/OPRA/wandb"}
+WANDB_METRIC_GRAD=${WANDB_METRIC_GRAD:-actor/grad_eta}
+WANDB_METRIC_PARAM=${WANDB_METRIC_PARAM:-actor/delta_w_eta}
+WANDB_PLOT_BOTH=${WANDB_PLOT_BOTH:-1}
 
 PYTHON=${PYTHON:-$HOME/miniconda3/envs/eval/bin/python}
 export CHECKPOINT_ROOT RUN_FILTER
@@ -23,7 +28,15 @@ root = Path(os.environ["CHECKPOINT_ROOT"])
 pattern = os.environ.get("RUN_FILTER", "").strip()
 regex = re.compile(pattern) if pattern else None
 paths = root.rglob("adapter_config.json")
-runs = sorted({p.parents[3].name for p in paths})
+runs = set()
+for p in paths:
+    try:
+        rel = p.relative_to(root)
+    except ValueError:
+        continue
+    if rel.parts:
+        runs.add(rel.parts[0])
+runs = sorted(runs)
 if regex:
     runs = [r for r in runs if regex.search(r)]
 print("\n".join(runs))
@@ -39,10 +52,18 @@ if [[ ${#RUN_LIST[@]} -eq 0 ]]; then
   exit 1
 fi
 
-CMD=($PYTHON "$PROJECT_ROOT/LLM_EVAL/tools/plot_opra_alignment_curve.py" \
+CMD=($PYTHON "$PROJECT_ROOT/LLM_EVAL/tools/opra_plot/plot_opra_alignment_curve.py" \
   --checkpoint_root "$CHECKPOINT_ROOT" \
   --principal_rank "$PRINCIPAL_RANK" \
+  --eta_source "$ETA_SOURCE" \
+  --wandb_root "$WANDB_ROOT" \
+  --wandb_metric_grad "$WANDB_METRIC_GRAD" \
+  --wandb_metric_param "$WANDB_METRIC_PARAM" \
   --out_dir "$OUT_DIR")
+
+if [[ "${WANDB_PLOT_BOTH}" == "1" ]]; then
+  CMD+=(--wandb_plot_both)
+fi
 
 for RUN_NAME in "${RUN_LIST[@]}"; do
   CMD+=(--run "${RUN_NAME}=${RUN_NAME}")
