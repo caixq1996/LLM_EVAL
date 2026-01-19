@@ -58,6 +58,31 @@ from opra_spectral_utils import (
 
 _WANDB_RUN_RE = re.compile(r"^run-")
 
+# Algorithm name mapping for legend display
+ALGO_NAME_MAP = {
+    "vanilla": "LoRA",
+    "opra": "OPRA",
+    "opra_opra": "OPRA-OPRA",
+    "adalora": "AdaLoRA",
+    "dora": "DoRA",
+    "rslora": "RSLoRA",
+    "pissa": "PiSSA",
+    "qpissa": "QPiSSA",
+    "qlora": "QLoRA",
+    "olora": "OLoRA",
+    "oft": "OFT",
+}
+
+
+def get_algo_display_name(run_name: str) -> str:
+    """Extract algorithm suffix and return display name for legend."""
+    # Extract suffix after last underscore (e.g., 'Qwen2.5-math-1.5B_vanilla' -> 'vanilla')
+    parts = run_name.rsplit("_", 1)
+    if len(parts) == 2:
+        suffix = parts[1]
+        return ALGO_NAME_MAP.get(suffix, suffix)
+    return run_name
+
 
 def _norm_key(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
@@ -310,10 +335,11 @@ def _compute_alignment(
         delta = compute_lora_delta(module, device=device, dtype=torch.float32)
         if delta is None or float(delta.pow(2).sum().item()) == 0.0:
             continue
-        if name not in uv_cache:
+        u, v = uv_cache.get(name, (None, None))
+        if u is None or v is None:
             base_w = get_base_weight(module)
             u, v = topk_svd(base_w, principal_rank, device=device, use_lowrank=use_lowrank)
-        u, v = uv_cache.get(name, (None, None))
+            uv_cache[name] = (u, v)
         u = u.to(device) if u is not None else None
         v = v.to(device) if v is not None else None
         eta, den = projection_energy_ratio(delta, u, v)
@@ -662,7 +688,8 @@ def main() -> None:
             fallback = pd.Series(np.arange(len(sub)), index=sub.index)
             x = sub["step"].fillna(fallback).to_numpy()
             y = sub["eta"].to_numpy()
-            label = f"{run} (recompute)" if use_wandb else run
+            display_name = get_algo_display_name(run)
+            label = f"{display_name} (recompute)" if use_wandb else display_name
             ax.plot(x, y, marker="o", linewidth=2, label=label)
             plotted = True
     if use_wandb and wandb_rows:
@@ -670,17 +697,18 @@ def main() -> None:
         for run, sub in df_wandb.groupby("run"):
             sub = sub.sort_values(by=["step"])
             x = sub["step"].to_numpy()
+            display_name = get_algo_display_name(run)
             plotted_any = False
             if args.wandb_plot_both:
                 if sub["eta_param"].notna().any():
-                    ax.plot(x, sub["eta_param"].to_numpy(), marker="s", linewidth=1.5, linestyle="--", label=f"{run} (wandb delta)")
+                    ax.plot(x, sub["eta_param"].to_numpy(), marker="s", linewidth=1.5, linestyle="--", label=f"{display_name} (δW)")
                     plotted_any = True
                 if sub["eta_grad"].notna().any():
-                    ax.plot(x, sub["eta_grad"].to_numpy(), marker="^", linewidth=1.2, linestyle=":", label=f"{run} (wandb grad)")
+                    ax.plot(x, sub["eta_grad"].to_numpy(), marker="^", linewidth=1.2, linestyle=":", label=f"{display_name} (grad)")
                     plotted_any = True
             else:
                 y = sub["eta"].to_numpy()
-                label = f"{run} (wandb)" if use_compute else run
+                label = f"{display_name} (wandb)" if use_compute else display_name
                 ax.plot(x, y, marker="s", linewidth=1.5, linestyle="--", label=label)
                 plotted_any = True
             if plotted_any:

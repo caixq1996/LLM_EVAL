@@ -39,7 +39,7 @@ cd "${EVAL_ROOT}"
 
 PROJECT_NAME="VI-CURL-BiasVar"
 EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
-EVAL_SUBDIR="${EVAL_SUBDIR:-eval_log_v2/vi_curl}"
+EVAL_SUBDIR="${EVAL_SUBDIR:-eval_log_v3/vi_curl}"
 
 # -------------------------------------------------------
 # Parse command line arguments
@@ -241,7 +241,7 @@ PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
 
 MAX_PROMPT_LEN="${MAX_PROMPT_LEN:-512}"
 NUM_PROMPTS="${NUM_PROMPTS:-0}"
-NUM_PROMPT_RATIO="${NUM_PROMPT_RATIO:-0.1}"
+NUM_PROMPT_RATIO="${NUM_PROMPT_RATIO:-0.05}"
 SUBSET_MODE="${SUBSET_MODE:-random}"
 SEED="${SEED:-42}"
 

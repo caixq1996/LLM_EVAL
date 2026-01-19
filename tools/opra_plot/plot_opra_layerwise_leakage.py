@@ -202,6 +202,7 @@ def main() -> None:
     ap.add_argument("--title", type=str, default="Layerwise Spectral Leakage (eta)")
     ap.add_argument("--steps", type=str, default="", help="Comma-separated global steps to plot (default: all)")
     ap.add_argument("--step", type=int, default=-1, help="Pick a specific global_step (deprecated; use --steps)")
+    ap.add_argument("--separate_plots", action="store_true", help="Generate one figure per algorithm per step instead of combined plots")
     args = ap.parse_args()
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
@@ -317,35 +318,66 @@ def main() -> None:
             continue
 
         df_step = pd.DataFrame(step_rows)
-        run_count = len(step_labels)
-        fig, axes = plt.subplots(1, run_count, figsize=(6 * run_count, 6), squeeze=False)
-        axes = axes[0]
         vmin, vmax = 0.0, 1.0
 
-        for idx, label in enumerate(step_labels):
-            sub = df_step[df_step["run"] == label].copy()
-            sub["weight"] = sub["delta_norm_sq"].replace(0.0, 1.0)
-            sub["weighted_eta"] = sub["eta"] * sub["weight"]
-            grouped = sub.groupby(["layer", "module_type"], as_index=False).agg(
-                weight_sum=("weight", "sum"),
-                weighted_eta_sum=("weighted_eta", "sum"),
-            )
-            grouped["eta"] = grouped["weighted_eta_sum"] / (grouped["weight_sum"] + 1e-12)
-            pivot = grouped.pivot_table(index="layer", columns="module_type", values="eta")
-            pivot = pivot.sort_index()
-            ax = axes[idx]
-            sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=idx == run_count - 1)
-            ax.set_title(label)
-            ax.set_xlabel("Module Type")
-            ax.set_ylabel("Layer")
+        if args.separate_plots:
+            # Generate one figure per algorithm per step
+            for label in step_labels:
+                sub = df_step[df_step["run"] == label].copy()
+                sub["weight"] = sub["delta_norm_sq"].replace(0.0, 1.0)
+                sub["weighted_eta"] = sub["eta"] * sub["weight"]
+                grouped = sub.groupby(["layer", "module_type"], as_index=False).agg(
+                    weight_sum=("weight", "sum"),
+                    weighted_eta_sum=("weighted_eta", "sum"),
+                )
+                grouped["eta"] = grouped["weighted_eta_sum"] / (grouped["weight_sum"] + 1e-12)
+                pivot = grouped.pivot_table(index="layer", columns="module_type", values="eta")
+                pivot = pivot.sort_index()
 
-        fig.suptitle(f"{args.title} (step {step})")
-        fig.tight_layout(rect=[0, 0, 1, 0.95])
-        out_path = out_dir / f"layerwise_leakage_step_{step}.png"
-        fig.savefig(out_path, dpi=300)
-        fig.savefig(out_dir / f"layerwise_leakage_step_{step}.pdf", dpi=300)
-        plt.close(fig)
-        print(f"[INFO] Saved plot: {out_path} and .pdf")
+                fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+                sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True)
+                ax.set_title(f"{label} (Step {step})", fontsize=14, fontweight='bold')
+                ax.set_xlabel("Module Type", fontsize=12)
+                ax.set_ylabel("Layer", fontsize=12)
+
+                fig.tight_layout()
+                # Sanitize label for filename
+                safe_label = label.replace("/", "_").replace(" ", "_")
+                out_path = out_dir / f"{safe_label}_step_{step}.png"
+                fig.savefig(out_path, dpi=300)
+                fig.savefig(out_dir / f"{safe_label}_step_{step}.pdf", dpi=300)
+                plt.close(fig)
+                print(f"[INFO] Saved individual plot: {out_path}")
+        else:
+            # Combined plot (original behavior)
+            run_count = len(step_labels)
+            fig, axes = plt.subplots(1, run_count, figsize=(6 * run_count, 6), squeeze=False)
+            axes = axes[0]
+
+            for idx, label in enumerate(step_labels):
+                sub = df_step[df_step["run"] == label].copy()
+                sub["weight"] = sub["delta_norm_sq"].replace(0.0, 1.0)
+                sub["weighted_eta"] = sub["eta"] * sub["weight"]
+                grouped = sub.groupby(["layer", "module_type"], as_index=False).agg(
+                    weight_sum=("weight", "sum"),
+                    weighted_eta_sum=("weighted_eta", "sum"),
+                )
+                grouped["eta"] = grouped["weighted_eta_sum"] / (grouped["weight_sum"] + 1e-12)
+                pivot = grouped.pivot_table(index="layer", columns="module_type", values="eta")
+                pivot = pivot.sort_index()
+                ax = axes[idx]
+                sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=idx == run_count - 1)
+                ax.set_title(label)
+                ax.set_xlabel("Module Type")
+                ax.set_ylabel("Layer")
+
+            fig.suptitle(f"{args.title} (step {step})")
+            fig.tight_layout(rect=[0, 0, 1, 0.95])
+            out_path = out_dir / f"layerwise_leakage_step_{step}.png"
+            fig.savefig(out_path, dpi=300)
+            fig.savefig(out_dir / f"layerwise_leakage_step_{step}.pdf", dpi=300)
+            plt.close(fig)
+            print(f"[INFO] Saved plot: {out_path} and .pdf")
 
     if base_ref is not None:
         del base_ref

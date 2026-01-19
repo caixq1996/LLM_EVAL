@@ -90,11 +90,29 @@ def prepare_data(data_name, args):
     out_file = f'{output_dir}/{data_name}/{out_file_prefix}_s{args.start}_e{args.end}{filename_suffix}.jsonl'
     os.makedirs(f'{output_dir}/{data_name}', exist_ok=True)
     
+    # [ENHANCED] 收集所有已完成样本（支持跨 GPU 数量变化的增量恢复）
     processed_samples = []
     if not args.overwrite:
-        # 在分片模式下，只读取自己分片的已完成文件
-        if os.path.exists(out_file):
-            processed_samples.extend(list(load_jsonl(out_file)))
+        ds_output_dir = f'{output_dir}/{data_name}'
+        
+        # 1. 读取所有已存在的 part 文件（跨不同 GPU 配置）
+        import glob
+        for existing_part in glob.glob(os.path.join(ds_output_dir, '*_part*.jsonl')):
+            try:
+                processed_samples.extend(list(load_jsonl(existing_part)))
+            except Exception as e:
+                print(f"[Warn] Failed to load {existing_part}: {e}")
+        
+        # 2. 也读取已合并的主文件（如果存在）
+        base_pattern = out_file.replace(filename_suffix, '')
+        if os.path.exists(base_pattern):
+            try:
+                processed_samples.extend(list(load_jsonl(base_pattern)))
+            except Exception as e:
+                print(f"[Warn] Failed to load merged file {base_pattern}: {e}")
+        
+        if processed_samples:
+            print(f"[Info] Loaded {len(processed_samples)} completed samples from existing files")
             
     processed_samples = {sample['idx']: sample for sample in processed_samples}
     processed_idxs = list(processed_samples.keys())

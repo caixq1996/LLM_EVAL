@@ -264,6 +264,10 @@ def _get_scaling(module: nn.Module, adapter_name: str) -> float:
 
 def compute_lora_delta(module: nn.Module, *, device: torch.device, dtype: torch.dtype) -> Optional[torch.Tensor]:
     delta = None
+    # Get AdaLoRA-specific attributes (lora_E for SVD-based importance, ranknum for rank normalization)
+    lora_e = getattr(module, "lora_E", None)
+    ranknum = getattr(module, "ranknum", None)
+    
     for adapter_name, a_lin, b_lin in _get_adapter_items(module):
         update = None
         if hasattr(module, "get_delta_weight"):
@@ -278,6 +282,34 @@ def compute_lora_delta(module: nn.Module, *, device: torch.device, dtype: torch.
                 continue
             a_weight = a_weight.detach().to(device=device, dtype=dtype)
             b_weight = b_weight.detach().to(device=device, dtype=dtype)
+            
+            # Handle AdaLoRA: apply lora_E scaling to A matrix
+            if lora_e is not None:
+                e_tensor = None
+                if isinstance(lora_e, (nn.ModuleDict, nn.ParameterDict)):
+                    if adapter_name in lora_e:
+                        e_tensor = _resolve_adapter_tensor(lora_e[adapter_name])
+                elif adapter_name == "default":
+                    e_tensor = _resolve_adapter_tensor(lora_e)
+                if e_tensor is not None:
+                    e = e_tensor.detach().to(device=device, dtype=dtype)
+                    if e.dim() == 1:
+                        a_weight = a_weight * e.unsqueeze(-1)
+                    else:
+                        a_weight = a_weight * e
+            
+            # Handle AdaLoRA: apply ranknum normalization to A matrix
+            if ranknum is not None:
+                r_tensor = None
+                if isinstance(ranknum, (nn.ModuleDict, nn.ParameterDict)):
+                    if adapter_name in ranknum:
+                        r_tensor = _resolve_adapter_tensor(ranknum[adapter_name])
+                elif adapter_name == "default":
+                    r_tensor = _resolve_adapter_tensor(ranknum)
+                if r_tensor is not None:
+                    r_val = r_tensor.detach().to(device=device, dtype=dtype)
+                    a_weight = a_weight / (r_val + 1e-5)
+            
             update = b_weight @ a_weight
             update = update * _get_scaling(module, adapter_name)
         elif not isinstance(update, torch.Tensor):

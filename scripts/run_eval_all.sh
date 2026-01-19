@@ -8,15 +8,29 @@
 set -x
 set -e   # 如果希望有 worker 挂掉就整 job 失败，可以打开
 
-PROJECT_NAME="OPRA"
-EXP_NAMES="${EXP_NAMES:-OPRA-LoRA}"
-MODEL_PATH="${MODEL_PATH:-checkpoints}" # giil | checkpoints
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-256}"
+PROJECT_NAME="VI-CURL"
+EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
+MODEL_PATH="${MODEL_PATH:-giil}" # giil | checkpoints
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
+D_SHM_DEFAULT="${D_SHM_DEFAULT:-256g}"
+D_SHM_G1="${D_SHM_G1:-64g}"
+D_SHM_G4="${D_SHM_G4:-${D_SHM_DEFAULT}}"
+D_SHM_G8="${D_SHM_G8:-${D_SHM_DEFAULT}}"
 
 # 特殊 adapter 算法配置（需要特殊 base model 的算法）
 # 格式: "algorithm1:suffix1,algorithm2:suffix2,..."
 # 例如: "pissa:_pissa_base,qpissa:_qpissa_base"
 export SPECIAL_ADAPTER_ALGORITHMS="${SPECIAL_ADAPTER_ALGORITHMS:-pissa:_pissa_base,qpissa:_qpissa_base}"
+
+get_d_shm_for_jc() {
+  local jc="$1"
+  case "$jc" in
+    *_g1) echo "${D_SHM_G1}" ;;
+    *_g4) echo "${D_SHM_G4}" ;;
+    *_g8) echo "${D_SHM_G8}" ;;
+    *) echo "${D_SHM_DEFAULT}" ;;
+  esac
+}
 
 # -------------------------------------------------------
 # Adaptive submit (use p90 scheduler on submit node)
@@ -27,6 +41,8 @@ export SPECIAL_ADAPTER_ALGORITHMS="${SPECIAL_ADAPTER_ALGORITHMS:-pissa:_pissa_ba
 KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF:-false}"
 RUN_EVAL_MULTI_SUBMIT="${RUN_EVAL_MULTI_SUBMIT:-false}"
 MULTI_SUBMIT_BASE_ONCE="${MULTI_SUBMIT_BASE_ONCE:-true}"
+RUN_EVAL_MULTI_SUBMIT_DEEP="${RUN_EVAL_MULTI_SUBMIT_DEEP:-false}"
+EVAL_STEPS="${EVAL_STEPS:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --submit)
@@ -45,18 +61,57 @@ while [[ $# -gt 0 ]]; do
       MULTI_SUBMIT_BASE_ONCE="false"
       shift
       ;;
+    --multi-submit-deep)
+      RUN_EVAL_MULTI_SUBMIT_DEEP="true"
+      shift
+      ;;
+    --steps)
+      EVAL_STEPS="$2"
+      shift 2
+      ;;
     *)
       shift
       ;;
   esac
 done
+export EVAL_STEPS
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-cd "${REPO_ROOT}"
+REPO_ROOT="${EVAL_REPO_ROOT:-${REPO_ROOT:-}}"
+if [[ -z "${REPO_ROOT}" ]]; then
+  if [[ -f "${SCRIPT_DIR}/../tools/run_qwen_eval_all_shared.py" ]]; then
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+  elif [[ -f "${PWD}/tools/run_qwen_eval_all_shared.py" ]]; then
+    REPO_ROOT="$(pwd)"
+  elif [[ -f "${HOME}/project/LLM_EVAL/tools/run_qwen_eval_all_shared.py" ]]; then
+    REPO_ROOT="${HOME}/project/LLM_EVAL"
+  elif [[ -n "${WORK_HOME:-}" && -f "${WORK_HOME}/project/LLM_EVAL/tools/run_qwen_eval_all_shared.py" ]]; then
+    REPO_ROOT="${WORK_HOME}/project/LLM_EVAL"
+  else
+    REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+  fi
+fi
+if [[ -d "${REPO_ROOT}" ]]; then
+  cd "${REPO_ROOT}"
+else
+  echo "[WARN] REPO_ROOT not found or not a directory: ${REPO_ROOT}"
+fi
+LOG_ROOT="${EVAL_LOG_ROOT:-${LOG_ROOT:-${REPO_ROOT}}}"
+if [[ -n "${LOG_ROOT}" && ! -w "${LOG_ROOT}" ]]; then
+  if [[ -n "${WORK_HOME:-}" && -w "${WORK_HOME}" ]]; then
+    LOG_ROOT="${WORK_HOME}"
+  elif [[ -w "${HOME}" ]]; then
+    LOG_ROOT="${HOME}"
+  else
+    LOG_ROOT="${PWD}"
+  fi
+fi
 
-if [[ $RUN_EVAL_MULTI_SUBMIT == "true" ]]; then
+if [[ $RUN_EVAL_MULTI_SUBMIT_DEEP == "true" ]]; then
+  RUN_EVAL_MULTI_SUBMIT="true"
+  RUN_EVAL_SUBMIT=1
+elif [[ $RUN_EVAL_MULTI_SUBMIT == "true" ]]; then
   RUN_EVAL_SUBMIT=1
 fi
 
@@ -68,11 +123,11 @@ _TS="$(date +%Y%m%d_%H%M%S)"
 
 # 判断日志目录：直接运行 vs qsub 提交后
 if [[ -n "${RUN_EVAL_SUBMITTED:-}" ]]; then
-  _LOG_BASE="eval_log/eval_all/qsub_submit"
+  _LOG_BASE="${LOG_ROOT}/eval_log/eval_all/qsub_submit"
 else
-  _LOG_BASE="eval_log/eval_all/main"
+  _LOG_BASE="${LOG_ROOT}/eval_log/eval_all/main"
 fi
-mkdir -p "${_LOG_BASE}" eval_log/eval_all/eval_gpus
+mkdir -p "${_LOG_BASE}" "${LOG_ROOT}/eval_log/eval_all/eval_gpus"
 
 # 主脚本日志文件
 # 如果是 multi-submit 子任务，使用 SUB_EXP_NAME（具体算法名）
@@ -103,11 +158,18 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
     exit 1
   fi
   
-  # 查找所有子目录
+  # 查找要提交的子目录
   SUBDIRS=()
-  while IFS= read -r -d '' dir; do
-    SUBDIRS+=("$dir")
-  done < <(find "$_MODEL_ROOT" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+  if [[ "${RUN_EVAL_MULTI_SUBMIT_DEEP}" == "true" ]]; then
+    while IFS= read -r -d '' dir; do
+      SUBDIRS+=("$dir")
+    done < <(find "$_MODEL_ROOT" -type d -name 'global_step_*' -printf '%h\0' | sort -zu)
+  fi
+  if [[ ${#SUBDIRS[@]} -eq 0 ]]; then
+    while IFS= read -r -d '' dir; do
+      SUBDIRS+=("$dir")
+    done < <(find "$_MODEL_ROOT" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+  fi
   
   if [[ ${#SUBDIRS[@]} -eq 0 ]]; then
     echo "[WARN] No subdirectories found under $_MODEL_ROOT, falling back to single submit."
@@ -129,9 +191,11 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
       base_job_name="${base_job_name:0:120}"
       read -r base_jc_base base_n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$base_job_name")
       base_jc_full="$(full_jclass_from_base "$base_jc_base")"
+      base_d_shm="$(get_d_shm_for_jc "$base_jc_base")"
       echo "[INFO] Submitting base-only eval job: ${base_job_name} (MODEL_ROOT=${_MODEL_ROOT})"
       qsub -N "$base_job_name" \
            -jc "$base_jc_full" \
+           -ac "d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=${base_d_shm}" \
            -v NUM_GPUS="${base_n_gpus}" \
            -v MODEL_ROOT="${_MODEL_ROOT}" \
            -v EXP_NAMES="${EXP_NAMES}" \
@@ -148,22 +212,43 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
     
     for subdir in "${SUBDIRS[@]}"; do
       sub_name="$(basename "$subdir")"
-      job_tag="${sub_name//[^A-Za-z0-9_]/_}"
+      if [[ "${RUN_EVAL_MULTI_SUBMIT_DEEP}" == "true" && "$subdir" == "$_MODEL_ROOT/"* ]]; then
+        sub_rel="${subdir#$_MODEL_ROOT/}"
+      else
+        sub_rel="$sub_name"
+      fi
+      sub_tag="${sub_rel//[^A-Za-z0-9_]/_}"
+      sub_tag="${sub_tag:0:120}"
+      job_tag="$sub_tag"
       job_tag="${job_tag:0:60}"
       job_name="EVAL_${PROJECT_NAME}_${job_tag}"
       job_name="${job_name//[^A-Za-z0-9_]/_}"
       job_name="${job_name:0:120}"
-      
+
+      if [[ "${RUN_EVAL_MULTI_SUBMIT_DEEP}" == "true" ]]; then
+        _prev_allow_g1="${P90_ALLOW_G1:-}"
+        P90_ALLOW_G1=1
+      fi
       read -r jc_base n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$job_name")
+      if [[ "${RUN_EVAL_MULTI_SUBMIT_DEEP}" == "true" ]]; then
+        if [[ -n "${_prev_allow_g1}" ]]; then
+          P90_ALLOW_G1="${_prev_allow_g1}"
+        else
+          unset P90_ALLOW_G1
+        fi
+        unset _prev_allow_g1
+      fi
       jc_full="$(full_jclass_from_base "$jc_base")"
+      d_shm_val="$(get_d_shm_for_jc "$jc_base")"
       
       echo "[INFO] Submitting: ${job_name} (MODEL_ROOT=${subdir})"
       qsub -N "$job_name" \
            -jc "$jc_full" \
+           -ac "d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=${d_shm_val}" \
            -v NUM_GPUS="${n_gpus}" \
            -v MODEL_ROOT="${subdir}" \
            -v EXP_NAMES="${EXP_NAMES}" \
-           -v SUB_EXP_NAME="${sub_name}" \
+           -v SUB_EXP_NAME="${sub_tag}" \
            -v RUN_EVAL_SUBMITTED=1 \
            -v KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF}" \
            -V \
@@ -195,10 +280,12 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_SUBMIT:-0}
 
   read -r jc_base n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$job_name")
   jc_full="$(full_jclass_from_base "$jc_base")"
+  d_shm_val="$(get_d_shm_for_jc "$jc_base")"
 
   echo "[INFO] Submitting eval job: name=${job_name} jc=${jc_full} n_gpus=${n_gpus}"
   qsub -N "$job_name" \
        -jc "$jc_full" \
+       -ac "d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=${d_shm_val}" \
        -v NUM_GPUS="${n_gpus}" \
        -v RUN_EVAL_SUBMITTED=1 \
        -V \
@@ -285,7 +372,7 @@ export EVAL_ONE_MODEL_TIMEOUT="${EVAL_ONE_MODEL_TIMEOUT:-21600}"
 
 # PASS@k 列表（受 MAX_SAMPLE_NUMS 限制）
 if [[ -z "${PASS_AT_KS:-}" ]]; then
-  default_pass_ks=(1 8 16 32 64 128 256)
+  default_pass_ks=(1 8 16 32 64 128 256 512 1024 2048)
   # default_pass_ks=(1 8)
   pass_ks=()
   for k in "${default_pass_ks[@]}"; do
@@ -322,6 +409,10 @@ base_args=(
   # 注意：cleanup_exported 会在脚本结束时统一处理，避免多个 shard 抢着删模型
 )
 
+if [[ -n "${EVAL_STEPS}" ]]; then
+  base_args+=( --steps "$EVAL_STEPS" )
+fi
+
 if [ "$SKIP_BASE_EVAL" = "true" ]; then
   base_args+=( --skip_base_eval )
 fi
@@ -336,7 +427,7 @@ failed_pids=()
 for ((i=0; i<NUM_GPUS; i++)); do
     gpu_id="${GPU_LIST[$i]}"
     # 使用 _EXP_TAG 保持日志命名一致（multi-submit 时为算法名）
-    LOG_FILE="eval_log/eval_all/eval_gpus/gpu_worker.${TS}.${_EXP_TAG}.rank_${i}.log"
+    LOG_FILE="${LOG_ROOT}/eval_log/eval_all/eval_gpus/gpu_worker.${TS}.${_EXP_TAG}.rank_${i}.log"
     echo "[INFO] Starting Worker $i/$NUM_GPUS on GPU $gpu_id... Log: $LOG_FILE"
 
     CUDA_VISIBLE_DEVICES=$gpu_id "$PYTHON_BIN" -u tools/run_qwen_eval_all_shared.py \

@@ -10,6 +10,8 @@ RUNS=${RUNS:-}
 RUN_FILTER=${RUN_FILTER:-}
 PRINCIPAL_RANK=${PRINCIPAL_RANK:-16}
 OUT_DIR=${OUT_DIR:-"$PROJECT_ROOT/LLM_EVAL/eval_log/opra_layerwise"}
+STEPS=${STEPS:-}
+SEPARATE_PLOTS=${SEPARATE_PLOTS:-}
 
 PYTHON=${PYTHON:-$HOME/miniconda3/envs/eval/bin/python}
 export CHECKPOINT_ROOT RUN_FILTER
@@ -60,4 +62,13 @@ if [[ -n "$BASE_MODEL" ]]; then
   CMD+=(--base_model "$BASE_MODEL")
 fi
 
+if [[ -n "${STEPS:-}" ]]; then
+  CMD+=(--steps "$STEPS")
+fi
+
+if [[ -n "${SEPARATE_PLOTS:-}" && "$SEPARATE_PLOTS" == "1" ]]; then
+  CMD+=(--separate_plots)
+fi
+
 "${CMD[@]}"
+

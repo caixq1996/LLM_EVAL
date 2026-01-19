@@ -196,10 +196,103 @@ def find_base_model_dir(base_root, run_name, adapter_suffix=None):
 def _split_ds_list(datasets):
     return [d.strip() for d in datasets.split(',') if d.strip()]
 
-def _metrics_exists(ds_dir):
+# 预期样本数量（从 base 模型结果中获取，或使用硬编码默认值）
+_EXPECTED_SAMPLES_CACHE = {}
+
+def _load_expected_samples():
+    """Load expected sample counts from base model results."""
+    global _EXPECTED_SAMPLES_CACHE
+    if _EXPECTED_SAMPLES_CACHE:
+        return _EXPECTED_SAMPLES_CACHE
+    
+    # 默认值（硬编码作为后备）
+    defaults = {
+        'aime24x8': 240,
+        'aime25x8': 240,
+        'amc23x8': 320,
+        'math500': 500,
+        'minerva_math': 272,
+        'olympiadbench': 675,
+    }
+    
+    # 尝试从 base 模型结果加载
+    base_results_dirs = [
+        Path(os.getenv('EVAL_BASE_RESULTS', '')),
+        EVAL_ROOT / 'rl_reasoning_results' / 'base__Qwen2.5-math-7B',
+        EVAL_ROOT / 'rl_reasoning_results' / 'base__Qwen2.5-Math-7B',
+    ]
+    
+    for base_dir in base_results_dirs:
+        if not base_dir or not base_dir.exists():
+            continue
+        for g in ['g1', 'g2']:
+            gdir = base_dir / g
+            if not gdir.exists():
+                continue
+            for ds_dir in gdir.iterdir():
+                if not ds_dir.is_dir():
+                    continue
+                # 查找非 part 的 metrics 文件
+                metrics_files = [f for f in ds_dir.glob('*metrics.json') if '_part' not in f.name]
+                if metrics_files:
+                    try:
+                        with open(metrics_files[0]) as f:
+                            data = json.load(f)
+                            if 'num_samples' in data:
+                                _EXPECTED_SAMPLES_CACHE[ds_dir.name] = data['num_samples']
+                    except Exception:
+                        pass
+    
+    # 使用默认值填充缺失的数据集
+    for k, v in defaults.items():
+        if k not in _EXPECTED_SAMPLES_CACHE:
+            _EXPECTED_SAMPLES_CACHE[k] = v
+    
+    return _EXPECTED_SAMPLES_CACHE
+
+def _is_dataset_complete(ds_dir, ds_name):
+    """
+    检查数据集评测是否完成。
+    
+    完成条件：
+    1. 存在非 part 的最终 metrics.json，且 num_samples 等于预期值
+    2. 或者：所有 part metrics.json 的 num_samples 之和等于预期值
+    """
     if not ds_dir.exists():
         return False
-    return bool(list(ds_dir.glob('*metrics.json')))
+    
+    expected_samples = _load_expected_samples()
+    expected = expected_samples.get(ds_name, 0)
+    if expected <= 0:
+        # 如果没有预期值，回退到简单检查
+        return bool(list(ds_dir.glob('*metrics.json')))
+    
+    # 首先检查是否存在非 part 的最终 metrics 文件
+    final_metrics = [f for f in ds_dir.glob('*metrics.json') if '_part' not in f.name]
+    if final_metrics:
+        try:
+            with open(final_metrics[0]) as f:
+                data = json.load(f)
+                if data.get('num_samples', 0) >= expected:
+                    return True
+        except Exception:
+            pass
+    
+    # 检查所有 part metrics 的样本数之和
+    part_metrics = sorted(ds_dir.glob('*_part*_*metrics.json'))
+    if not part_metrics:
+        return False
+    
+    total_samples = 0
+    for pm in part_metrics:
+        try:
+            with open(pm) as f:
+                data = json.load(f)
+                total_samples += data.get('num_samples', 0)
+        except Exception:
+            pass
+    
+    return total_samples >= expected
 
 def check_missing_by_group(out_root, run_name):
     missing = {1: [], 2: []}
@@ -209,7 +302,7 @@ def check_missing_by_group(out_root, run_name):
         ds_list = _split_ds_list(datasets)
         for ds in ds_list:
             ds_dir = gdir / ds
-            if not _metrics_exists(ds_dir):
+            if not _is_dataset_complete(ds_dir, ds):
                 missing[group_idx].append(ds)
     return missing
 
@@ -374,18 +467,60 @@ def run_groups_with_shared_llm(
                     print(f"[{_now()}] 📊 [{tag}] GPU Mem: Alloc={alloc:.2f}GB / Rsrv={reserved:.2f}GB / Total={total:.2f}GB", flush=True)
                 except Exception:
                     pass
+        
+        # 辅助函数：杀死所有 vLLM EngineCore 子进程
+        def _kill_vllm_child_processes():
+            """Kill orphaned vLLM EngineCore child processes to free GPU memory."""
+            import psutil
+            current_pid = os.getpid()
+            try:
+                current_process = psutil.Process(current_pid)
+                children = current_process.children(recursive=True)
+                for child in children:
+                    try:
+                        cmdline = ' '.join(child.cmdline())
+                        # Kill vLLM engine core processes and any CUDA-related children
+                        if 'EngineCore' in cmdline or 'vllm' in cmdline.lower() or child.name() == 'python':
+                            child.terminate()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                # Wait for processes to terminate
+                _, alive = psutil.wait_procs(children, timeout=5)
+                # Force kill any remaining
+                for p in alive:
+                    try:
+                        p.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+            except Exception as e:
+                print(f"[{_now()}] [WARN] 清理子进程时发生错误: {e}", flush=True)
+        
         # 1. 打印清理前状态
         _log_mem("Before Cleanup")
         
         # 清理超时设置（秒）
         CLEANUP_TIMEOUT = int(os.environ.get('VLLM_CLEANUP_TIMEOUT', '30'))
         
+        # 使用 stderr 重定向来抑制已知的 CUDAPluggableAllocator 错误
+        import io
+        import contextlib
+        
+        # 保存原始 stderr
+        _orig_stderr = sys.stderr
+        _captured_stderr = io.StringIO()
+        
         try:
+            # 临时捕获 stderr 以抑制 CUDAPluggableAllocator 噪音
+            sys.stderr = _captured_stderr
+            
             # 2. 删除对象并强制 GC
             del llm
             gc.collect()
             
-            # 3. 销毁分布式组 (带超时保护，防止 NCCL 死锁)
+            # 3. 杀死所有 vLLM 子进程以释放 GPU 内存
+            _kill_vllm_child_processes()
+            
+            # 4. 销毁分布式组 (带超时保护，防止 NCCL 死锁)
             if destroy_model_parallel is not None:
                 _run_with_timeout(
                     destroy_model_parallel,
@@ -393,7 +528,7 @@ def run_groups_with_shared_llm(
                     desc="destroy_model_parallel"
                 )
             
-            # 4. 清理 PyTorch 缓存 (带超时保护，防止 cuda.synchronize 死锁)
+            # 5. 清理 PyTorch 缓存 (带超时保护，防止 cuda.synchronize 死锁)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 _run_with_timeout(
@@ -402,13 +537,29 @@ def run_groups_with_shared_llm(
                     desc="cuda.synchronize"
                 )
             
-            # 5. 短暂休眠确保驱动层回收
-            time.sleep(0.5)
+            # 6. 再次尝试 GC 和缓存清理
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # 7. 较长休眠确保驱动层完全回收
+            time.sleep(2.0)
 
         except Exception as e:
             print(f"[{_now()}] [ERROR] 资源释放过程中发生错误: {e}", flush=True)
+        finally:
+            # 恢复 stderr
+            sys.stderr = _orig_stderr
+            
+            # 过滤并打印非 CUDAPluggableAllocator 的错误
+            captured = _captured_stderr.getvalue()
+            if captured:
+                for line in captured.splitlines():
+                    # 过滤已知的非致命 CUDA 分配器错误
+                    if 'CUDAPluggableAllocator' not in line and 'Trying to free a pointer' not in line:
+                        print(line, file=sys.stderr, flush=True)
 
-        # 6. 打印清理后状态
+        # 8. 打印清理后状态
         _log_mem("After Cleanup")
 
 def _execute_payload(payload, exit_on_done=False):
@@ -571,6 +722,7 @@ def main():
     ap.add_argument('--skip_base_eval', action='store_true', help='跳过 base 模型评测')
     ap.add_argument('--skip_step_eval', action='store_true', help='跳过 global_step 评测（仅跑 base）')
     ap.add_argument('--cleanup_exported', action='store_true', help='评测完成后删除导出的 HF 目录')
+    ap.add_argument('--steps', type=str, default='', help='Comma-separated step ids or names, e.g. 100,200 or global_step_100')
     ap.add_argument('--_one_model_worker', action='store_true', help=argparse.SUPPRESS)
     ap.add_argument('--_worker_payload', type=str, default='', help=argparse.SUPPRESS)
     # [FIX] 确保 argparse 能接收这两个参数
@@ -593,10 +745,28 @@ def main():
     all_subdirs = [p for p in args.model_root.iterdir() if p.is_dir()]
     is_single_run = any(p.name.startswith('global_step_') for p in all_subdirs)
     
+    def _filter_steps(step_dirs, steps_spec):
+        if not steps_spec:
+            return step_dirs
+        wanted = set()
+        for token in steps_spec.split(','):
+            t = token.strip()
+            if not t:
+                continue
+            if t.isdigit():
+                wanted.add(f'global_step_{t}')
+            else:
+                wanted.add(t)
+        if not wanted:
+            return step_dirs
+        return [p for p in step_dirs if p.name in wanted]
+
     if is_single_run:
         # MODEL_ROOT 本身就是一个 run 目录，使用其目录名查找 base 模型
         run_name_for_base = args.model_root.name
         runs = sorted([p for p in all_subdirs if p.name.startswith('global_step_')])
+        if args.steps:
+            runs = _filter_steps(runs, args.steps)
         print(f'[{_now()}] [INFO] 检测到单 run 目录模式，run_name_for_base={run_name_for_base}', flush=True)
     else:
         # MODEL_ROOT 下有多个 run 目录
@@ -703,6 +873,8 @@ def main():
                 step_dirs = [run]  # run 本身就是 step_dir
             else:
                 step_dirs = list_step_dirs(run, only_latest=False)
+            if args.steps:
+                step_dirs = _filter_steps(step_dirs, args.steps)
 
             if not step_dirs:
                 print(f'[WARN] 该 run 无可导出的分片模型：{run_name}')

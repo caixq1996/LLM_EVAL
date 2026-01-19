@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q regular-g
-#PBS -l select=8
-#PBS -l walltime=08:00:00
+#PBS -l select=16
+#PBS -l walltime=16:00:00
 #PBS -W group_list=gq50
 #PBS -N opra_multi_eval
 #PBS -j oe
@@ -17,11 +17,27 @@ SUBMIT_DIR="${PBS_O_WORKDIR:-$PWD}"
 ########################################
 
 RUN_EVAL_SUBMIT="${RUN_EVAL_SUBMIT:-0}"
+RUN_EVAL_MULTI_SUBMIT="${RUN_EVAL_MULTI_SUBMIT:-0}"
+EVAL_STEP_FILTER="${EVAL_STEP_FILTER:-100-313:100}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --submit)
       RUN_EVAL_SUBMIT=1
       shift
+      ;;
+    --multi-submit)
+      RUN_EVAL_MULTI_SUBMIT=1
+      RUN_EVAL_SUBMIT=1
+      shift
+      ;;
+    --steps|--eval-steps)
+      if [[ -n "${2:-}" ]]; then
+        EVAL_STEP_FILTER="$2"
+        shift 2
+      else
+        echo "[ERROR] --steps requires a value (e.g. 20,40,100 or 100-300 or 100-300:50)."
+        exit 2
+      fi
       ;;
     *)
       shift
@@ -69,17 +85,18 @@ EXP_NAME="${EXP_NAME:-OPRA-LoRA}"
 MODEL_ROOT="${MODEL_ROOT:-${ROOT_DIR}/checkpoints/${EXP_NAME}}"
 BASE_ROOT="${BASE_ROOT:-${WORK_HOME}/model}"
 PROMPT_TYPE="${PROMPT_TYPE:-qwen25-math-cot}"
-OUT_ROOT="${OUT_ROOT:-${ROOT_DIR}/eval_results/${EXP_NAME}_${PROMPT_TYPE}_v2}"
+OUT_ROOT="${OUT_ROOT:-${ROOT_DIR}/eval_results/${EXP_NAME}_${PROMPT_TYPE}_v4}"
 MAX_TOKENS="${MAX_TOKENS:-4096}"
 EXPORT_ROOT="${EXPORT_ROOT:-${WORK_HOME}/export}"
 EVAL_DATA_DIR="${EVAL_DATA_DIR:-${WORK_DIR}/data}"
 EVAL_NUM_TEST_SAMPLE="${EVAL_NUM_TEST_SAMPLE:-}"
 EVAL_GROUP1_DATASETS="${EVAL_GROUP1_DATASETS:-}"
 EVAL_GROUP2_DATASETS="${EVAL_GROUP2_DATASETS:-}"
+EVAL_STEP_FILTER="${EVAL_STEP_FILTER:-}"
 
 NUM_GPUS_PER_NODE=1
 MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-1024}"
-SKIP_BASE_EVAL="${SKIP_BASE_EVAL:-false}"
+SKIP_BASE_EVAL="${SKIP_BASE_EVAL:-true}"
 TEMP_G1="${TEMP_G1:-0.6}"
 TEMP_G2="${TEMP_G2:-0.0}"
 NSAMP_G1="${NSAMP_G1:-${MAX_SAMPLE_NUMS}}"
@@ -92,10 +109,52 @@ mkdir -p "${OUT_ROOT}"
 ########################################
 
 if [[ -z "${PBS_JOBID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_SUBMIT}" == "1" ]]; then
-    MIYABI_SELECT_NODES="${MIYABI_SELECT_NODES:-64}"
+    MIYABI_SELECT_NODES="${MIYABI_SELECT_NODES:-16}"
     MIYABI_QUEUE="${MIYABI_QUEUE:-regular-g}"
-    MIYABI_WALLTIME="${MIYABI_WALLTIME:-08:00:00}"
+    MIYABI_WALLTIME="${MIYABI_WALLTIME:-16:00:00}"
     MIYABI_GROUP="${MIYABI_GROUP:-gq50}"
+
+    if [[ "${RUN_EVAL_MULTI_SUBMIT}" == "1" || "${RUN_EVAL_MULTI_SUBMIT}" == "true" ]]; then
+        if [[ ! -d "${MODEL_ROOT}" ]]; then
+            echo "[ERROR] MODEL_ROOT not found: ${MODEL_ROOT}"
+            exit 1
+        fi
+
+        SUBDIRS=()
+        while IFS= read -r -d '' dir; do
+            SUBDIRS+=("$dir")
+        done < <(find "${MODEL_ROOT}" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+
+        if [[ ${#SUBDIRS[@]} -eq 0 ]]; then
+            echo "[WARN] No subdirectories found under ${MODEL_ROOT}, falling back to single submit."
+        else
+            echo "[INFO] Multi-submit mode: ${#SUBDIRS[@]} subdirectories under ${MODEL_ROOT}"
+            for subdir in "${SUBDIRS[@]}"; do
+                sub_name="$(basename "${subdir}")"
+                job_tag="${sub_name//[^A-Za-z0-9_]/_}"
+                job_tag="${job_tag:0:60}"
+                job_name="EVAL_${PROJECT_NAME}_${job_tag}"
+                job_name="${job_name//[^A-Za-z0-9_]/_}"
+                job_name="${job_name:0:120}"
+                out_root_sub="${OUT_ROOT}/${sub_name}"
+
+                echo "[INFO] Submitting: ${job_name} (MODEL_ROOT=${subdir}) nodes=${MIYABI_SELECT_NODES}"
+                qsub -N "${job_name}" \
+                     -q "${MIYABI_QUEUE}" \
+                     -l "select=${MIYABI_SELECT_NODES}" \
+                     -l "walltime=${MIYABI_WALLTIME}" \
+                     -W "group_list=${MIYABI_GROUP}" \
+                     -v RUN_EVAL_SUBMITTED=1 \
+                     -v MODEL_ROOT="${subdir}" \
+                     -v OUT_ROOT="${out_root_sub}" \
+                     -v EXP_NAME="${EXP_NAME}" \
+                     -V \
+                     "${SCRIPT_PATH}"
+            done
+            echo "[INFO] Submitted ${#SUBDIRS[@]} jobs."
+            exit 0
+        fi
+    fi
 
     job_tag="${EXP_NAME//[^A-Za-z0-9_]/_}"
     job_tag="${job_tag:0:60}"
@@ -187,9 +246,26 @@ export VLLM_USE_FLASHINFER_SAMPLER=1
 export EVAL_ONE_MODEL_TIMEOUT="\${EVAL_ONE_MODEL_TIMEOUT:-21600}"
 export EXPORT_ROOT="${EXPORT_ROOT}"
 export EVAL_DATA_DIR="${EVAL_DATA_DIR}"
-export EVAL_NUM_TEST_SAMPLE="${EVAL_NUM_TEST_SAMPLE}"
-export EVAL_GROUP1_DATASETS="${EVAL_GROUP1_DATASETS}"
-export EVAL_GROUP2_DATASETS="${EVAL_GROUP2_DATASETS}"
+if [ -n "${EVAL_NUM_TEST_SAMPLE}" ]; then
+  export EVAL_NUM_TEST_SAMPLE="${EVAL_NUM_TEST_SAMPLE}"
+else
+  unset EVAL_NUM_TEST_SAMPLE
+fi
+if [ -n "${EVAL_GROUP1_DATASETS}" ]; then
+  export EVAL_GROUP1_DATASETS="${EVAL_GROUP1_DATASETS}"
+else
+  unset EVAL_GROUP1_DATASETS
+fi
+if [ -n "${EVAL_GROUP2_DATASETS}" ]; then
+  export EVAL_GROUP2_DATASETS="${EVAL_GROUP2_DATASETS}"
+else
+  unset EVAL_GROUP2_DATASETS
+fi
+if [ -n "${EVAL_STEP_FILTER}" ]; then
+  export EVAL_STEP_FILTER="${EVAL_STEP_FILTER}"
+else
+  unset EVAL_STEP_FILTER
+fi
 
 # 激活环境
 source "${WORK_HOME}/miniconda3/bin/activate" eval
