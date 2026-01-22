@@ -48,6 +48,13 @@ from opra_spectral_utils import (
     resolve_run_dir,
 )
 
+# Add opra_plot directory to path for plot_config import
+OPRA_PLOT_DIR = Path(__file__).resolve().parents[1] / "opra_plot"
+if str(OPRA_PLOT_DIR) not in sys.path:
+    sys.path.insert(0, str(OPRA_PLOT_DIR))
+
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, create_legend
+
 
 def _parse_run_arg(run_arg: str) -> Tuple[str, str]:
     if "=" not in run_arg:
@@ -204,7 +211,13 @@ def main() -> None:
     ap.add_argument("--title", type=str, default="Activation Drift in Base Principal Subspace")
     ap.add_argument("--steps", type=str, default="", help="Comma-separated global steps to plot (default: all)")
     ap.add_argument("--step", type=int, default=-1, help="Pick a specific global_step (deprecated; use --steps)")
+    ap.add_argument("--replot", action="store_true", help="Skip computation and replot from existing CSV data")
+    add_font_size_args(ap)
     args = ap.parse_args()
+    
+    # Setup plot style with Times New Roman font
+    setup_plot_style()
+    font_sizes = get_font_sizes(args)
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
     device = torch.device("cuda" if args.device in ("auto", "cuda") and torch.cuda.is_available() else "cpu")
@@ -213,6 +226,37 @@ def main() -> None:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Replot mode: load existing CSV and regenerate plots
+    if args.replot:
+        csv_path = out_dir / "activation_drift.csv"
+        if not csv_path.exists():
+            print(f"[ERROR] Cannot replot: {csv_path} not found")
+            return
+        print(f"[INFO] Replot mode: loading data from {csv_path}")
+        df = pd.read_csv(csv_path)
+        all_steps = sorted(df["step"].unique())
+        
+        for step in all_steps:
+            df_step = df[df["step"] == step]
+            fig, ax = plt.subplots(figsize=(10, 5))
+            for run, sub in df_step.groupby("run"):
+                sub = sub.sort_values(by="layer")
+                ax.plot(sub["layer"], sub["ratio"], marker="o", linewidth=2, label=run)
+            ax.set_xlabel("Layer", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+            ax.set_ylabel("Drift Energy in Base PCs", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+            ax.grid(True, linestyle="--", alpha=0.4)
+            ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+            create_legend(ax, font_sizes)
+            fig.tight_layout()
+            out_path = out_dir / f"activation_drift_step_{step}.png"
+            fig.savefig(out_path, dpi=300)
+            fig.savefig(out_dir / f"activation_drift_step_{step}.pdf", dpi=300)
+            plt.close(fig)
+            print(f"[INFO] Saved plot: {out_path} and .pdf")
+        
+        print(f"[INFO] Replot complete.")
+        return
 
     prompts = _load_prompts(Path(args.prompt_file), args.prompt_field or None, args.num_samples, args.seed)
     step_filter: Optional[List[int]] = None
@@ -347,11 +391,12 @@ def main() -> None:
         for run, sub in df_step.groupby("run"):
             sub = sub.sort_values(by="layer")
             ax.plot(sub["layer"], sub["ratio"], marker="o", linewidth=2, label=run)
-        ax.set_xlabel("Layer")
-        ax.set_ylabel("Drift Energy in Base PCs")
-        ax.set_title(f"{args.title} (step {step})")
+        ax.set_xlabel("Layer", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+        ax.set_ylabel("Drift Energy in Base PCs", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+        # Title removed for publication
         ax.grid(True, linestyle="--", alpha=0.4)
-        ax.legend()
+        ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+        create_legend(ax, font_sizes)
         fig.tight_layout()
         out_path = out_dir / f"activation_drift_step_{step}.png"
         fig.savefig(out_path, dpi=300)

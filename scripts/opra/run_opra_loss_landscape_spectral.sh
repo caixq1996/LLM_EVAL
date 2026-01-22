@@ -98,4 +98,8 @@ if [[ -n "$STEPS" ]]; then
   CMD+=(--steps "$STEPS")
 fi
 
+if [[ -n "${REPLOT:-}" && "$REPLOT" == "1" ]]; then
+  CMD+=(--replot)
+fi
+
 "${CMD[@]}"

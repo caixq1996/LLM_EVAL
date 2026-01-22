@@ -22,6 +22,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, create_legend
+
 # Algorithm name mapping for legend
 ALGO_NAME_MAP = {
     "vanilla": "LoRA",
@@ -154,9 +156,9 @@ def find_wandb_runs(wandb_root: Path, model_filter: str) -> Dict[str, Path]:
 def plot_eta_curves(
     data: Dict[str, pd.DataFrame],
     metric: str,
-    title: str,
     ylabel: str,
     out_path: Path,
+    font_sizes: Dict,
 ):
     """Plot eta curves for all algorithms."""
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -168,10 +170,11 @@ def plot_eta_curves(
         color = ALGO_COLORS.get(algo_name, None)
         ax.plot(df["step"], df[metric], label=algo_name, color=color, linewidth=2)
     
-    ax.set_xlabel("Training Step", fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_title(title, fontsize=14)
-    ax.legend(loc="best", fontsize=10)
+    ax.set_xlabel("Training Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+    ax.set_ylabel(ylabel, fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+    # Title removed for publication
+    ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+    create_legend(ax, font_sizes)
     ax.grid(True, alpha=0.3)
     ax.set_yscale("log") if metric == "delta_w_eta" else None
     
@@ -190,11 +193,52 @@ def main():
                         help="Filter for model name in experiment_name")
     parser.add_argument("--out_dir", type=str, default="/home/caixq/project/LLM_EVAL/eval_log/opra/wandb_eta",
                         help="Output directory for plots")
+    parser.add_argument("--replot", action="store_true", help="Skip computation and replot from existing CSV data")
+    add_font_size_args(parser)
     args = parser.parse_args()
+    
+    # Setup plot style with Times New Roman font
+    setup_plot_style()
+    font_sizes = get_font_sizes(args)
     
     wandb_root = Path(args.wandb_root)
     out_dir = Path(args.out_dir) / args.model_filter
     out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Replot mode: load existing CSV and regenerate plots
+    if args.replot:
+        csv_path = out_dir / "wandb_eta_data.csv"
+        if not csv_path.exists():
+            print(f"[ERROR] Cannot replot: {csv_path} not found")
+            return
+        print(f"[INFO] Replot mode: loading data from {csv_path}")
+        combined_df = pd.read_csv(csv_path)
+        
+        # Reconstruct all_data dict from CSV
+        all_data = {}
+        for algo, sub in combined_df.groupby("algorithm"):
+            all_data[algo] = sub.copy()
+        
+        # Plot grad_eta
+        plot_eta_curves(
+            all_data,
+            metric="grad_eta",
+            ylabel="grad_eta (gradient's desire to modify principal space)",
+            out_path=out_dir / "grad_eta_curve",
+            font_sizes=font_sizes,
+        )
+        
+        # Plot delta_w_eta
+        plot_eta_curves(
+            all_data,
+            metric="delta_w_eta",
+            ylabel="delta_w_eta (actual modification to principal space)",
+            out_path=out_dir / "delta_w_eta_curve",
+            font_sizes=font_sizes,
+        )
+        
+        print(f"[INFO] Replot complete.")
+        return
     
     print(f"[INFO] Scanning WandB runs in {wandb_root}")
     print(f"[INFO] Model filter: {args.model_filter}")
@@ -234,18 +278,18 @@ def main():
     plot_eta_curves(
         all_data,
         metric="grad_eta",
-        title=f"Gradient Alignment η (grad_eta) - {args.model_filter}",
         ylabel="grad_eta (gradient's desire to modify principal space)",
         out_path=out_dir / "grad_eta_curve",
+        font_sizes=font_sizes,
     )
     
     # Plot delta_w_eta
     plot_eta_curves(
         all_data,
         metric="delta_w_eta",
-        title=f"Parameter Alignment η (delta_w_eta) - {args.model_filter}",
         ylabel="delta_w_eta (actual modification to principal space)",
         out_path=out_dir / "delta_w_eta_curve",
+        font_sizes=font_sizes,
     )
     
     print(f"[INFO] All plots saved to {out_dir}")

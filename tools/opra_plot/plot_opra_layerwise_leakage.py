@@ -51,6 +51,8 @@ from opra_spectral_utils import (
     topk_svd,
 )
 
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, create_legend
+
 
 def _parse_run_arg(run_arg: str) -> Tuple[str, str]:
     if "=" not in run_arg:
@@ -203,7 +205,13 @@ def main() -> None:
     ap.add_argument("--steps", type=str, default="", help="Comma-separated global steps to plot (default: all)")
     ap.add_argument("--step", type=int, default=-1, help="Pick a specific global_step (deprecated; use --steps)")
     ap.add_argument("--separate_plots", action="store_true", help="Generate one figure per algorithm per step instead of combined plots")
+    ap.add_argument("--replot", action="store_true", help="Skip computation and replot from existing CSV data")
+    add_font_size_args(ap)
     args = ap.parse_args()
+    
+    # Setup plot style with Times New Roman font
+    setup_plot_style()
+    font_sizes = get_font_sizes(args)
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
     device = torch.device("cuda" if args.device in ("auto", "cuda") and torch.cuda.is_available() else "cpu")
@@ -213,6 +221,81 @@ def main() -> None:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Replot mode: load existing CSV and regenerate plots
+    if args.replot:
+        csv_path = out_dir / "layerwise_leakage.csv"
+        if not csv_path.exists():
+            print(f"[ERROR] Cannot replot: {csv_path} not found")
+            return
+        print(f"[INFO] Replot mode: loading data from {csv_path}")
+        df = pd.read_csv(csv_path)
+        all_steps = sorted(df["step"].unique())
+        run_labels = sorted(df["run"].unique())
+        print(f"[INFO] Found {len(all_steps)} steps and {len(run_labels)} runs in CSV")
+        
+        vmin, vmax = 0.0, 1.0
+        for step in all_steps:
+            df_step = df[df["step"] == step]
+            step_labels = sorted(df_step["run"].unique())
+            
+            if args.separate_plots:
+                for label in step_labels:
+                    sub = df_step[df_step["run"] == label].copy()
+                    sub["weight"] = sub["delta_norm_sq"].replace(0.0, 1.0)
+                    sub["weighted_eta"] = sub["eta"] * sub["weight"]
+                    grouped = sub.groupby(["layer", "module_type"], as_index=False).agg(
+                        weight_sum=("weight", "sum"),
+                        weighted_eta_sum=("weighted_eta", "sum"),
+                    )
+                    grouped["eta"] = grouped["weighted_eta_sum"] / (grouped["weight_sum"] + 1e-12)
+                    pivot = grouped.pivot_table(index="layer", columns="module_type", values="eta")
+                    pivot = pivot.sort_index()
+
+                    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+                    sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True)
+                    ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                    ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                    ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+
+                    fig.tight_layout()
+                    safe_label = label.replace("/", "_").replace(" ", "_")
+                    out_path = out_dir / f"{safe_label}_step_{step}.png"
+                    fig.savefig(out_path, dpi=300)
+                    fig.savefig(out_dir / f"{safe_label}_step_{step}.pdf", dpi=300)
+                    plt.close(fig)
+                    print(f"[INFO] Saved individual plot: {out_path}")
+            else:
+                run_count = len(step_labels)
+                fig, axes = plt.subplots(1, run_count, figsize=(6 * run_count, 6), squeeze=False)
+                axes = axes[0]
+
+                for idx, label in enumerate(step_labels):
+                    sub = df_step[df_step["run"] == label].copy()
+                    sub["weight"] = sub["delta_norm_sq"].replace(0.0, 1.0)
+                    sub["weighted_eta"] = sub["eta"] * sub["weight"]
+                    grouped = sub.groupby(["layer", "module_type"], as_index=False).agg(
+                        weight_sum=("weight", "sum"),
+                        weighted_eta_sum=("weighted_eta", "sum"),
+                    )
+                    grouped["eta"] = grouped["weighted_eta_sum"] / (grouped["weight_sum"] + 1e-12)
+                    pivot = grouped.pivot_table(index="layer", columns="module_type", values="eta")
+                    pivot = pivot.sort_index()
+                    ax = axes[idx]
+                    sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=idx == run_count - 1)
+                    ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                    ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                    ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+
+                fig.tight_layout()
+                out_path = out_dir / f"layerwise_leakage_step_{step}.png"
+                fig.savefig(out_path, dpi=300)
+                fig.savefig(out_dir / f"layerwise_leakage_step_{step}.pdf", dpi=300)
+                plt.close(fig)
+                print(f"[INFO] Saved plot: {out_path} and .pdf")
+        
+        print(f"[INFO] Replot complete.")
+        return
 
     uv_cache: Dict[str, Tuple[torch.Tensor, torch.Tensor]] = {}
     run_rows: List[Dict] = []
@@ -336,9 +419,10 @@ def main() -> None:
 
                 fig, ax = plt.subplots(1, 1, figsize=(8, 8))
                 sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True)
-                ax.set_title(f"{label} (Step {step})", fontsize=14, fontweight='bold')
-                ax.set_xlabel("Module Type", fontsize=12)
-                ax.set_ylabel("Layer", fontsize=12)
+                # Title removed for publication
+                ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                ax.tick_params(axis='both', labelsize=font_sizes['tick'])
 
                 fig.tight_layout()
                 # Sanitize label for filename
@@ -367,12 +451,13 @@ def main() -> None:
                 pivot = pivot.sort_index()
                 ax = axes[idx]
                 sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=idx == run_count - 1)
-                ax.set_title(label)
-                ax.set_xlabel("Module Type")
-                ax.set_ylabel("Layer")
+                # Title removed for publication
+                ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                ax.tick_params(axis='both', labelsize=font_sizes['tick'])
 
-            fig.suptitle(f"{args.title} (step {step})")
-            fig.tight_layout(rect=[0, 0, 1, 0.95])
+            # suptitle removed for publication
+            fig.tight_layout()
             out_path = out_dir / f"layerwise_leakage_step_{step}.png"
             fig.savefig(out_path, dpi=300)
             fig.savefig(out_dir / f"layerwise_leakage_step_{step}.pdf", dpi=300)

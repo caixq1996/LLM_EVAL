@@ -48,11 +48,21 @@ GROUP_DATASETS = (
     os.getenv("EVAL_GROUP2_DATASETS", _DEFAULT_GROUP_DATASETS[1]),
 )
 _export_root_env = os.getenv("EXPORT_ROOT")
-EXPORT_ROOT = (
-    Path(_export_root_env).expanduser().resolve()
-    if _export_root_env
-    else (Path(os.getenv("WORK_HOME", "/data/giil/caixq")) / "export").resolve()
-)
+_keep_exported_hf = os.getenv("KEEP_EXPORTED_HF", "false").lower() in ("true", "1", "yes")
+
+# 如果 KEEP_EXPORTED_HF=false，使用 tmpfs 以避免磁盘配额问题
+if not _keep_exported_hf and _export_root_env is None:
+    # 使用 /dev/shm (tmpfs) 作为临时导出目录
+    _tmpfs_export = Path("/dev/shm/eval_export") / str(os.getpid())
+    _tmpfs_export.mkdir(parents=True, exist_ok=True)
+    EXPORT_ROOT = _tmpfs_export
+    print(f'[INFO] KEEP_EXPORTED_HF=false, using tmpfs for export: {EXPORT_ROOT}', flush=True)
+else:
+    EXPORT_ROOT = (
+        Path(_export_root_env).expanduser().resolve()
+        if _export_root_env
+        else (Path(os.getenv("WORK_HOME", "/data/giil/caixq")) / "export").resolve()
+    )
 
 def _safe_rmtree(p: Path):
     def _onerror(func, path, exc_info):
@@ -349,15 +359,33 @@ def load_llm_and_tokenizer(model_dir, use_vllm, pipeline_parallel_size):
         visible = os.environ.get('CUDA_VISIBLE_DEVICES', '')
         ngpus = len([x for x in visible.split(',') if x.strip()]) or 1
         tp = max(1, ngpus // max(1, pipeline_parallel_size))
+        
+        # [PERF-OPT] 优化 vLLM 配置以最大化吞吐量
+        # 1. enable_prefix_caching: 关键优化！对于 pass@k，同一 prompt 的 n 个采样可以共享 KV cache
+        # 2. enforce_eager=False: 启用 CUDA graphs 加速 kernel 执行
+        # 3. gpu_memory_utilization=0.95: 使用更多显存用于 KV cache
+        # 4. max_model_len: 限制单个序列长度以容纳更多并发序列
+        # 5. disable_log_stats: 减少日志开销
+        
+        max_model_len = int(os.environ.get('VLLM_MAX_MODEL_LEN', '4096'))
+        gpu_mem_util = float(os.environ.get('VLLM_GPU_MEMORY_UTILIZATION', '0.95'))
+        
+        print(f'[PERF] vLLM config: tp={tp}, max_model_len={max_model_len}, gpu_mem={gpu_mem_util}', flush=True)
+        
         llm = LLM(
             model=str(model_dir),
             tensor_parallel_size=tp,
-            gpu_memory_utilization=0.85,
-            enable_chunked_prefill=True,
-            enable_sleep_mode=True,
-            enforce_eager=True,
             pipeline_parallel_size=pipeline_parallel_size,
-            trust_remote_code=True
+            gpu_memory_utilization=gpu_mem_util,  # 增加到 0.95
+            max_model_len=max_model_len,  # 限制序列长度以增加并发
+            enable_prefix_caching=True,  # 关键：prefix caching 让同一 prompt 的采样共享 KV cache
+            enable_chunked_prefill=False,  # 禁用 chunked prefill，对 decoding-heavy 任务更快
+            enforce_eager=False,  # 启用 CUDA graphs
+            trust_remote_code=True,
+            disable_log_stats=True,  # 减少日志开销
+            # 额外优化
+            swap_space=0,  # 禁用 swap 到 CPU，强制使用 GPU
+            disable_custom_all_reduce=False,  # 保持高效 all-reduce
         )
         tokenizer = None
     else:
@@ -383,9 +411,9 @@ def run_groups_with_shared_llm(
     pipeline_parallel_size,
     missing=None,
     temperature_g1=0.6,
-    temperature_g2=0.0,
+    temperature_g2=0.8,
     n_sampling_g1=1,
-    n_sampling_g2=1,
+    n_sampling_g2=8,
     shard_id=0,
     num_shards=1
 ):
@@ -400,6 +428,16 @@ def run_groups_with_shared_llm(
         torch.cuda.empty_cache()
         gc.collect()
     llm, tokenizer = load_llm_and_tokenizer(model_dir, use_vllm, pipeline_parallel_size)
+    
+    # 模型已加载到 GPU，如果使用 tmpfs 导出则立即删除以释放内存
+    if not _keep_exported_hf and str(model_dir).startswith('/dev/shm'):
+        try:
+            model_dir_path = Path(model_dir)
+            if model_dir_path.exists():
+                _safe_rmtree(model_dir_path)
+                print(f'[{_now()}] 🧹 已删除 tmpfs 导出目录: {model_dir}', flush=True)
+        except Exception as e:
+            print(f'[{_now()}] [WARN] 删除 tmpfs 导出失败: {e}', flush=True)
 
     # 打印分片信息
     if num_shards > 1:
@@ -647,6 +685,10 @@ def _worker_loop(task_queue, result_queue, cuda_devices, extra_env=None):
         run_name = payload.get('run_name', 'unknown')
         timeout = payload.pop('_timeout', None)
         
+        # 超时改为活跃度检测：只有在一段时间内没有任何输出时才超时
+        # timeout 变量现在表示"无活动超时"（idle timeout），而不是总超时
+        IDLE_TIMEOUT_SEC = int(os.environ.get('EVAL_IDLE_TIMEOUT', timeout or 1800))  # 默认30分钟无活动超时
+        
         # Serialize payload to pass to subprocess
         payload_json = json.dumps(payload)
 
@@ -659,24 +701,54 @@ def _worker_loop(task_queue, result_queue, cuda_devices, extra_env=None):
         ]
 
         try:
-            # We use subprocess.run to isolate the vLLM lifecycle.
-            # timeout parameter in subprocess.run handles the per-model timeout.
-            # capture_output=False lets stdout/stderr flow to the main log.
-            subprocess.run(
-                cmd, 
-                env=os.environ, 
-                check=True, 
-                timeout=timeout
+            # 使用 Popen 进行基于活跃度的超时监控
+            # 只要子进程还在产生输出（stdout/stderr），就不会超时
+            import select
+            
+            proc = subprocess.Popen(
+                cmd,
+                env=os.environ,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1  # Line buffered
             )
-            result_queue.put({'run_name': run_name, 'status': 'ok'})
             
-        except subprocess.TimeoutExpired:
-            print(f"[{_now()}] [TIMEOUT] Worker subprocess timed out for {run_name}", flush=True)
-            result_queue.put({'run_name': run_name, 'status': 'error', 'error': 'Timeout'})
+            last_activity_time = time.time()
             
-        except subprocess.CalledProcessError as e:
-            print(f"[{_now()}] [ERROR] Worker subprocess failed for {run_name} with exit code {e.returncode}", flush=True)
-            result_queue.put({'run_name': run_name, 'status': 'error', 'error': f'Exit code {e.returncode}'})
+            while proc.poll() is None:  # 进程仍在运行
+                # 使用 select 等待输出，最多等待 10 秒
+                ready, _, _ = select.select([proc.stdout], [], [], 10.0)
+                
+                if ready:
+                    line = proc.stdout.readline()
+                    if line:
+                        # 有输出，更新活跃时间并打印
+                        last_activity_time = time.time()
+                        print(line, end='', flush=True)
+                else:
+                    # 检查是否超过无活动超时
+                    idle_time = time.time() - last_activity_time
+                    if IDLE_TIMEOUT_SEC > 0 and idle_time > IDLE_TIMEOUT_SEC:
+                        print(f"[{_now()}] [IDLE_TIMEOUT] No output for {idle_time:.0f}s, terminating {run_name}", flush=True)
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=30)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                        result_queue.put({'run_name': run_name, 'status': 'error', 'error': f'Idle timeout ({idle_time:.0f}s)'})
+                        break
+            else:
+                # 进程正常结束，读取剩余输出
+                remaining = proc.stdout.read()
+                if remaining:
+                    print(remaining, end='', flush=True)
+                
+                if proc.returncode == 0:
+                    result_queue.put({'run_name': run_name, 'status': 'ok'})
+                else:
+                    print(f"[{_now()}] [ERROR] Worker subprocess failed for {run_name} with exit code {proc.returncode}", flush=True)
+                    result_queue.put({'run_name': run_name, 'status': 'error', 'error': f'Exit code {proc.returncode}'})
             
         except Exception as exc:
             print(f"[{_now()}] [ERROR] Unexpected exception in worker loop for {run_name}: {exc}", flush=True)
@@ -715,9 +787,9 @@ def main():
     ap.add_argument('--vllm_batch_size', type=int, default=0)
     ap.add_argument('--pipeline_parallel_size', type=int, default=1)
     ap.add_argument('--temperature_g1', type=float, default=0.6)
-    ap.add_argument('--temperature_g2', type=float, default=0.0)
+    ap.add_argument('--temperature_g2', type=float, default=0.8)
     ap.add_argument('--n_sampling_g1', type=int, default=1)
-    ap.add_argument('--n_sampling_g2', type=int, default=1)
+    ap.add_argument('--n_sampling_g2', type=int, default=8)
     ap.add_argument('--per_model_timeout', type=int, default=0, help='每个模型评测的最大时长（秒）')
     ap.add_argument('--skip_base_eval', action='store_true', help='跳过 base 模型评测')
     ap.add_argument('--skip_step_eval', action='store_true', help='跳过 global_step 评测（仅跑 base）')
@@ -744,6 +816,13 @@ def main():
     # 检测 MODEL_ROOT 是否直接是 run 目录（包含 global_step_*）
     all_subdirs = [p for p in args.model_root.iterdir() if p.is_dir()]
     is_single_run = any(p.name.startswith('global_step_') for p in all_subdirs)
+    
+    # [NEW] 支持 DEEP_STEP_FILTER 环境变量（从 multi-submit-deep 传入）
+    deep_step_filter = os.environ.get('DEEP_STEP_FILTER', '').strip()
+    if deep_step_filter:
+        # DEEP_STEP_FILTER 优先级高于 --steps 参数
+        args.steps = deep_step_filter
+        print(f'[{_now()}] [INFO] 使用 DEEP_STEP_FILTER 过滤 step: {deep_step_filter}', flush=True)
     
     def _filter_steps(step_dirs, steps_spec):
         if not steps_spec:
@@ -880,11 +959,13 @@ def main():
                 print(f'[WARN] 该 run 无可导出的分片模型：{run_name}')
                 continue
             for step_dir in step_dirs:
-                # 为保持输出目录结构一致，使用 lookup_name 而非 run_name
+                # 为保持输出目录结构一致，使用 lookup_name 作为父目录
+                # 输出结构: out_root/{safe_run_name}/{run_name}__{step_name}/g{1,2}/...
+                safe_run_name = run_name.replace('.', '_').replace('-', '_')
                 if is_single_run:
-                    tag = f'{lookup_name}__{step_dir.name}'
+                    tag = f'{safe_run_name}/{lookup_name}__{step_dir.name}'
                 else:
-                    tag = f'{run_name}__{step_dir.name}'
+                    tag = f'{safe_run_name}/{run_name}__{step_dir.name}'
                 missing = check_missing_by_group(out_root=out_root, run_name=tag)
                 need_any = any((missing[g] for g in missing))
                 if not need_any:

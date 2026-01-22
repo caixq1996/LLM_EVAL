@@ -9,7 +9,7 @@ set -x
 set -e   # 如果希望有 worker 挂掉就整 job 失败，可以打开
 
 PROJECT_NAME="VI-CURL"
-EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
+EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}" # VI-CURL_deepscaler_diff | OPRA-LoRA
 MODEL_PATH="${MODEL_PATH:-giil}" # giil | checkpoints
 MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
 D_SHM_DEFAULT="${D_SHM_DEFAULT:-256g}"
@@ -40,9 +40,9 @@ get_d_shm_for_jc() {
 # 解析命令行参数
 KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF:-false}"
 RUN_EVAL_MULTI_SUBMIT="${RUN_EVAL_MULTI_SUBMIT:-false}"
-MULTI_SUBMIT_BASE_ONCE="${MULTI_SUBMIT_BASE_ONCE:-true}"
+MULTI_SUBMIT_BASE_ONCE="${MULTI_SUBMIT_BASE_ONCE:-false}"
 RUN_EVAL_MULTI_SUBMIT_DEEP="${RUN_EVAL_MULTI_SUBMIT_DEEP:-false}"
-EVAL_STEPS="${EVAL_STEPS:-}"
+EVAL_STEPS="${EVAL_STEPS:-}" # 100,200,300,313
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --submit)
@@ -158,12 +158,73 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
     exit 1
   fi
   
+  # 解析 EVAL_STEPS 为有效的 step 数字列表
+  # 支持格式: "100,200,300" 或 "100-300:50" 或 "100-300"
+  parse_eval_steps_to_array() {
+    local spec="$1"
+    local result=()
+    if [[ -z "$spec" ]]; then
+      echo ""
+      return
+    fi
+    # 处理范围格式 "start-end:step" 或 "start-end"
+    if [[ "$spec" =~ ^([0-9]+)-([0-9]+)(:([0-9]+))?$ ]]; then
+      local start="${BASH_REMATCH[1]}"
+      local end="${BASH_REMATCH[2]}"
+      local step="${BASH_REMATCH[4]:-1}"
+      for ((i=start; i<=end; i+=step)); do
+        result+=("$i")
+      done
+    else
+      # 处理逗号分隔格式 "100,200,300"
+      IFS=',' read -ra tokens <<< "$spec"
+      for t in "${tokens[@]}"; do
+        t="${t//[^0-9]/}"  # 只保留数字
+        if [[ -n "$t" ]]; then
+          result+=("$t")
+        fi
+      done
+    fi
+    echo "${result[*]}"
+  }
+  
+  # 检查 step 数字是否在允许列表中
+  step_in_filter() {
+    local step_num="$1"
+    local -a allowed=($2)
+    if [[ ${#allowed[@]} -eq 0 ]]; then
+      return 0  # 无过滤器，允许所有
+    fi
+    for a in "${allowed[@]}"; do
+      if [[ "$step_num" == "$a" ]]; then
+        return 0
+      fi
+    done
+    return 1
+  }
+  
   # 查找要提交的子目录
   SUBDIRS=()
+  DEEP_STEP_NAMES=()  # 用于 multi-submit-deep 记录每个 step 的名称
   if [[ "${RUN_EVAL_MULTI_SUBMIT_DEEP}" == "true" ]]; then
-    while IFS= read -r -d '' dir; do
-      SUBDIRS+=("$dir")
-    done < <(find "$_MODEL_ROOT" -type d -name 'global_step_*' -printf '%h\0' | sort -zu)
+    # 解析 EVAL_STEPS 过滤器
+    ALLOWED_STEPS="$(parse_eval_steps_to_array "${EVAL_STEPS:-}")"
+    if [[ -n "$ALLOWED_STEPS" ]]; then
+      echo "[INFO] EVAL_STEPS filter parsed: $ALLOWED_STEPS"
+    fi
+    
+    # 深入到每个 global_step_* 目录单独提交
+    while IFS= read -r -d '' stepdir; do
+      step_name="$(basename "$stepdir")"
+      # 提取 step 数字
+      step_num="${step_name#global_step_}"
+      if step_in_filter "$step_num" "$ALLOWED_STEPS"; then
+        SUBDIRS+=("$stepdir")
+        DEEP_STEP_NAMES+=("$step_name")
+      else
+        echo "[INFO] Skipping $step_name (not in EVAL_STEPS filter)"
+      fi
+    done < <(find "$_MODEL_ROOT" -type d -name 'global_step_*' -print0 | sort -zV)
   fi
   if [[ ${#SUBDIRS[@]} -eq 0 ]]; then
     while IFS= read -r -d '' dir; do
@@ -210,13 +271,25 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
       echo "[INFO] MULTI_SUBMIT_BASE_ONCE=false, skipping base-only job."
     fi
     
-    for subdir in "${SUBDIRS[@]}"; do
+    for i in "${!SUBDIRS[@]}"; do
+      subdir="${SUBDIRS[$i]}"
       sub_name="$(basename "$subdir")"
-      if [[ "${RUN_EVAL_MULTI_SUBMIT_DEEP}" == "true" && "$subdir" == "$_MODEL_ROOT/"* ]]; then
-        sub_rel="${subdir#$_MODEL_ROOT/}"
+      
+      # 对于 multi-submit-deep，subdir 是 global_step_* 目录
+      # 需要使用其父目录作为 MODEL_ROOT，并传递 step 名称作为过滤器
+      if [[ "${RUN_EVAL_MULTI_SUBMIT_DEEP}" == "true" ]]; then
+        step_name="$sub_name"  # e.g., global_step_100
+        parent_dir="$(dirname "$subdir")"  # 父目录（算法目录）
+        parent_name="$(basename "$parent_dir")"
+        sub_rel="${parent_name}/${step_name}"
+        actual_model_root="$parent_dir"
+        deep_step_filter="$step_name"
       else
         sub_rel="$sub_name"
+        actual_model_root="$subdir"
+        deep_step_filter=""
       fi
+      
       sub_tag="${sub_rel//[^A-Za-z0-9_]/_}"
       sub_tag="${sub_tag:0:120}"
       job_tag="$sub_tag"
@@ -241,14 +314,15 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
       jc_full="$(full_jclass_from_base "$jc_base")"
       d_shm_val="$(get_d_shm_for_jc "$jc_base")"
       
-      echo "[INFO] Submitting: ${job_name} (MODEL_ROOT=${subdir})"
+      echo "[INFO] Submitting: ${job_name} (MODEL_ROOT=${actual_model_root}, DEEP_STEP_FILTER=${deep_step_filter:-none})"
       qsub -N "$job_name" \
            -jc "$jc_full" \
            -ac "d=nvcr-cuda-12.4.1-ubuntu22.04,d_shm=${d_shm_val}" \
            -v NUM_GPUS="${n_gpus}" \
-           -v MODEL_ROOT="${subdir}" \
+           -v MODEL_ROOT="${actual_model_root}" \
            -v EXP_NAMES="${EXP_NAMES}" \
            -v SUB_EXP_NAME="${sub_tag}" \
+           -v DEEP_STEP_FILTER="${deep_step_filter}" \
            -v RUN_EVAL_SUBMITTED=1 \
            -v KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF}" \
            -V \
@@ -364,7 +438,7 @@ TS="${_TS}"
 echo "[INFO] Job started at ${TS}. Detected ${NUM_GPUS} GPUs."
 
 TEMP_G1="${TEMP_G1:-0.6}"
-TEMP_G2="${TEMP_G2:-0.0}"
+TEMP_G2="${TEMP_G2:-0.8}"
 NSAMP_G1="${NSAMP_G1:-${MAX_SAMPLE_NUMS}}"
 NSAMP_G2="${NSAMP_G2:-${MAX_SAMPLE_NUMS}}"
 

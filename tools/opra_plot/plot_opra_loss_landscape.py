@@ -41,6 +41,8 @@ from opra_spectral_utils import (
     resolve_run_dir,
 )
 
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes
+
 
 def _parse_run_arg(run_arg: str) -> Tuple[str, str]:
     if "=" not in run_arg:
@@ -290,7 +292,13 @@ def main() -> None:
     ap.add_argument("--step", type=int, default=-1, help="Pick a specific global_step (deprecated; use --steps)")
     ap.add_argument("--shared_directions", action="store_true", default=True)
     ap.add_argument("--no_shared_directions", dest="shared_directions", action="store_false")
+    ap.add_argument("--replot", action="store_true", help="Skip computation and replot from existing NPZ data")
+    add_font_size_args(ap)
     args = ap.parse_args()
+    
+    # Setup plot style with Times New Roman font
+    setup_plot_style()
+    font_sizes = get_font_sizes(args)
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
     device = torch.device("cuda" if args.device in ("auto", "cuda") and torch.cuda.is_available() else "cpu")
@@ -299,6 +307,57 @@ def main() -> None:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Replot mode: load existing NPZ and regenerate plots
+    if args.replot:
+        npz_files = sorted(out_dir.glob("loss_landscape_step_*.npz"))
+        if not npz_files:
+            print(f"[ERROR] Cannot replot: no NPZ files found in {out_dir}")
+            return
+        print(f"[INFO] Replot mode: found {len(npz_files)} NPZ files")
+        
+        for npz_path in npz_files:
+            data = np.load(npz_path)
+            alphas = data["alphas"]
+            betas = data["betas"]
+            X, Y = np.meshgrid(alphas, betas)
+            
+            run_losses = {k.replace("loss_", ""): data[k] for k in data.files if k.startswith("loss_")}
+            labels = list(run_losses.keys())
+            step = int(npz_path.stem.split("step_")[1])
+            
+            # 2D plot
+            fig2d, axes2d = plt.subplots(1, len(labels), figsize=(6 * len(labels), 5), squeeze=False)
+            axes2d = axes2d[0]
+            for idx, label in enumerate(labels):
+                ax = axes2d[idx]
+                cs = ax.contourf(X, Y, run_losses[label], levels=30, cmap="viridis")
+                ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+                fig2d.colorbar(cs, ax=ax, fraction=0.046, pad=0.04)
+            fig2d.tight_layout()
+            fig2d.savefig(out_dir / f"loss_landscape_2d_step_{step}.png", dpi=300)
+            fig2d.savefig(out_dir / f"loss_landscape_2d_step_{step}.pdf", dpi=300)
+            plt.close(fig2d)
+            
+            # 3D plot
+            fig3d = plt.figure(figsize=(6 * len(labels), 5))
+            for idx, label in enumerate(labels, start=1):
+                ax = fig3d.add_subplot(1, len(labels), idx, projection="3d")
+                ax.plot_surface(X, Y, run_losses[label], cmap="viridis", linewidth=0, antialiased=True)
+                ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                ax.set_zlabel("loss", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+            fig3d.tight_layout()
+            fig3d.savefig(out_dir / f"loss_landscape_3d_step_{step}.png", dpi=300)
+            fig3d.savefig(out_dir / f"loss_landscape_3d_step_{step}.pdf", dpi=300)
+            plt.close(fig3d)
+            print(f"[INFO] Replot step {step} complete.")
+        
+        print(f"[INFO] Replot complete.")
+        return
 
     step_filter: Optional[List[int]] = None
     if args.steps.strip():
@@ -415,12 +474,13 @@ def main() -> None:
         for idx, label in enumerate(labels):
             ax = axes2d[idx]
             cs = ax.contourf(X, Y, run_losses[label], levels=30, cmap="viridis")
-            ax.set_title(label)
-            ax.set_xlabel("alpha")
-            ax.set_ylabel("beta")
+            # Title removed for publication
+            ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+            ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+            ax.tick_params(axis='both', labelsize=font_sizes['tick'])
             fig2d.colorbar(cs, ax=ax, fraction=0.046, pad=0.04)
-        fig2d.suptitle(f"{args.title} 2D (step {step})")
-        fig2d.tight_layout(rect=[0, 0, 1, 0.95])
+        # suptitle removed for publication
+        fig2d.tight_layout()
         out_2d = out_dir / f"loss_landscape_2d_step_{step}.png"
         fig2d.savefig(out_2d, dpi=300)
         fig2d.savefig(out_dir / f"loss_landscape_2d_step_{step}.pdf", dpi=300)
@@ -431,12 +491,13 @@ def main() -> None:
         for idx, label in enumerate(labels, start=1):
             ax = fig3d.add_subplot(1, len(labels), idx, projection="3d")
             ax.plot_surface(X, Y, run_losses[label], cmap="viridis", linewidth=0, antialiased=True)
-            ax.set_title(label)
-            ax.set_xlabel("alpha")
-            ax.set_ylabel("beta")
-            ax.set_zlabel("loss")
-        fig3d.suptitle(f"{args.title} 3D (step {step})")
-        fig3d.tight_layout(rect=[0, 0, 1, 0.95])
+            # Title removed for publication
+            ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+            ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+            ax.set_zlabel("loss", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+            ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+        # suptitle removed for publication
+        fig3d.tight_layout()
         out_3d = out_dir / f"loss_landscape_3d_step_{step}.png"
         fig3d.savefig(out_3d, dpi=300)
         fig3d.savefig(out_dir / f"loss_landscape_3d_step_{step}.pdf", dpi=300)

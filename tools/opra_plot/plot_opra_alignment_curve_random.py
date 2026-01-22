@@ -53,6 +53,8 @@ from opra_spectral_utils import (
     topk_svd,
 )
 
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, create_legend
+
 
 def _parse_run_arg(run_arg: str) -> Tuple[str, str]:
     if "=" not in run_arg:
@@ -222,7 +224,13 @@ def main() -> None:
     ap.add_argument("--out_dir", required=True)
     ap.add_argument("--title", type=str, default="Spectral Alignment Across Steps (Random Baseline)")
     ap.add_argument("--steps", type=str, default="", help="Comma-separated step numbers to keep (default: all)")
+    ap.add_argument("--replot", action="store_true", help="Skip computation and replot from existing CSV data")
+    add_font_size_args(ap)
     args = ap.parse_args()
+    
+    # Setup plot style with Times New Roman font
+    setup_plot_style()
+    font_sizes = get_font_sizes(args)
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
     device = torch.device("cuda" if args.device in ("auto", "cuda") and torch.cuda.is_available() else "cpu")
@@ -233,6 +241,37 @@ def main() -> None:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Replot mode: load existing CSV and regenerate plots
+    if args.replot:
+        csv_path = out_dir / "alignment_curve_random.csv"
+        if not csv_path.exists():
+            print(f"[ERROR] Cannot replot: {csv_path} not found")
+            return
+        print(f"[INFO] Replot mode: loading data from {csv_path}")
+        df = pd.read_csv(csv_path)
+        
+        fig, ax = plt.subplots(figsize=(9, 5))
+        for run, sub in df.groupby("run"):
+            sub = sub.sort_values(by=["step"], na_position="last")
+            fallback = pd.Series(np.arange(len(sub)), index=sub.index)
+            x = sub["step"].fillna(fallback).to_numpy()
+            y = sub["eta"].to_numpy()
+            y_rand = sub["eta_random"].to_numpy()
+            line = ax.plot(x, y, marker="o", linewidth=2, label=run)[0]
+            ax.plot(x, y_rand, linestyle="--", linewidth=2, color=line.get_color(), label=f"{run} (random)")
+        ax.set_xlabel("Global Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+        ax.set_ylabel("Alignment Ratio (eta)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+        create_legend(ax, font_sizes)
+        fig.tight_layout()
+        out_path = out_dir / "alignment_curve_random.png"
+        fig.savefig(out_path, dpi=300)
+        fig.savefig(out_dir / "alignment_curve_random.pdf", dpi=300)
+        plt.close(fig)
+        print(f"[INFO] Replot complete: {out_path} and .pdf")
+        return
 
     print(f"[INFO] checkpoint_root={checkpoint_root}")
     print(f"[INFO] out_dir={out_dir}")
@@ -402,11 +441,12 @@ def main() -> None:
         y_rand = sub["eta_random"].to_numpy()
         line = ax.plot(x, y, marker="o", linewidth=2, label=run)[0]
         ax.plot(x, y_rand, linestyle="--", linewidth=2, color=line.get_color(), label=f"{run} (random)")
-    ax.set_xlabel("Global Step")
-    ax.set_ylabel("Alignment Ratio (eta)")
-    ax.set_title(args.title)
+    ax.set_xlabel("Global Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+    ax.set_ylabel("Alignment Ratio (eta)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+    # Title removed for publication
     ax.grid(True, linestyle="--", alpha=0.4)
-    ax.legend()
+    ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+    create_legend(ax, font_sizes)
     fig.tight_layout()
     out_path = out_dir / "alignment_curve_random.png"
     fig.savefig(out_path, dpi=300)

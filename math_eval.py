@@ -43,6 +43,9 @@ def parse_args():
     parser.add_argument('--pipeline_parallel_size', type=int, default=1)
     parser.add_argument('--adapt_few_shot', action='store_true', help='Few shot for multiple-choice questions, zero shot for others.')
     # [NEW] 分片参数
+    parser.add_argument('--generation_only', action='store_true', help='Only generate outputs, skip evaluation')
+    parser.add_argument('--verify_only', action='store_true', help='Only verify pre-generated outputs')
+    # [NEW] 分片参数
     parser.add_argument('--shard_id', type=int, default=0)
     parser.add_argument('--num_shards', type=int, default=1)
     args = parser.parse_args()
@@ -171,9 +174,24 @@ def main(llm, tokenizer, data_name, args):
             if key in example:
                 sample[key] = example[key]
         samples.append(sample)
-    input_prompts = [sample['prompt'] for sample in samples for _ in range(args.n_sampling)]
-    if args.apply_chat_template:
-        input_prompts = [tokenizer.apply_chat_template([{'role': 'user', 'content': prompt.strip()}], tokenize=False, add_generation_prompt=True) for prompt in input_prompts]
+    
+    # [PERF-OPT] 使用 vLLM 的 n 参数进行批量采样，而非复制 prompt
+    # 这可以利用 KV cache 共享，大幅提升 pass@k 评测效率
+    # 注意：vLLM 要求 temperature=0 时 n 必须为 1（贪婪采样）
+    use_vllm_n_sampling = args.use_vllm and args.n_sampling > 1 and args.temperature > 0
+    
+    if use_vllm_n_sampling:
+        # vLLM 模式：每个 prompt 只保留一份，通过 n 参数生成多个采样
+        unique_prompts = [sample['prompt'] for sample in samples]
+        if args.apply_chat_template:
+            unique_prompts = [tokenizer.apply_chat_template([{'role': 'user', 'content': prompt.strip()}], tokenize=False, add_generation_prompt=True) for prompt in unique_prompts]
+        input_prompts = unique_prompts
+    else:
+        # 非 vLLM 或 n_sampling=1：传统方式复制 prompt
+        input_prompts = [sample['prompt'] for sample in samples for _ in range(args.n_sampling)]
+        if args.apply_chat_template:
+            input_prompts = [tokenizer.apply_chat_template([{'role': 'user', 'content': prompt.strip()}], tokenize=False, add_generation_prompt=True) for prompt in input_prompts]
+    
     remain_prompts = input_prompts
     remain_prompts = [(i, prompt) for i, prompt in enumerate(remain_prompts)]
     end_prompts = []
@@ -201,42 +219,88 @@ def main(llm, tokenizer, data_name, args):
         prompts = [item[1] for item in current_prompts]
         result_prompts.extend(prompts)
         if args.use_vllm:
-            if args.vllm_batch_size:
-                outputs = []
-                total_batches = (len(prompts) + args.vllm_batch_size - 1) // args.vllm_batch_size
-                for batch_idx, i in enumerate(range(0, len(prompts), args.vllm_batch_size)):
-                    batch_prompts = prompts[i:i + args.vllm_batch_size]
-                    batch_outputs = llm.generate(batch_prompts, SamplingParams(temperature=args.temperature, max_tokens=args.max_tokens_per_call, stop=stop_words, stop_token_ids=[151645, 151643] if 'qwen2' in args.model_name_or_path.lower() else None), use_tqdm=False)
-                    batch_outputs = sorted(batch_outputs, key=lambda x: int(x.request_id))
-                    batch_outputs = [output.outputs[0].text for output in batch_outputs]
-                    outputs.extend(batch_outputs)
-                    print(f'  Batch {batch_idx + 1}/{total_batches} done ({len(outputs)}/{len(prompts)} prompts)')
-            else:
-                outputs = llm.generate(prompts, SamplingParams(temperature=args.temperature, max_tokens=args.max_tokens_per_call, stop=stop_words, stop_token_ids=[151645, 151643] if 'qwen2' in args.model_name_or_path.lower() else None), use_tqdm=False)
-                outputs = sorted(outputs, key=lambda x: int(x.request_id))
-                outputs = [output.outputs[0].text for output in outputs]
-                print(f'  Generated {len(outputs)} outputs')
+            total_prompts = len(prompts)
+            # 确定实际的 n 参数
+            n_per_prompt = args.n_sampling if use_vllm_n_sampling else 1
+            print(f'  [Sampling] Starting generation: {total_prompts} prompts x {n_per_prompt} samples/prompt = {total_prompts * n_per_prompt} total', flush=True)
+            gen_start = time.time()
+            
+            # 构建 SamplingParams，使用 n 参数进行并行采样
+            # 注意：不设置 best_of，让 vLLM 自动调度批量大小以避免显存溢出
+            stop_token_ids = [151645, 151643] if 'qwen2' in args.model_name_or_path.lower() else None
+            sampling_params = SamplingParams(
+                temperature=args.temperature, 
+                max_tokens=args.max_tokens_per_call, 
+                stop=stop_words, 
+                stop_token_ids=stop_token_ids,
+                n=n_per_prompt,  # [PERF-OPT] 每个 prompt 生成 n 个采样，vLLM 自动分批
+                top_p=1.0 if args.temperature > 0 else 1.0,
+            )
+            
+            # [PERF-OPT] vLLM 内部会自动进行高效的 continuous batching
+            # 不需要手动分批，直接发送所有 prompts，让 vLLM 调度
+            print(f'  [Sampling] Sending all {total_prompts} prompts to vLLM (n={n_per_prompt} per prompt)...', flush=True)
+            results = llm.generate(prompts, sampling_params, use_tqdm=True)
+            results = sorted(results, key=lambda x: int(x.request_id))
+            
+            # 展开多个输出：每个 request 有 n 个 outputs
+            outputs = []
+            for result in results:
+                for out in result.outputs:
+                    outputs.append(out.text)
+            
+            gen_time = time.time() - gen_start
+            throughput = len(outputs) / gen_time if gen_time > 0 else 0
+            print(f'  [Sampling] Generated {len(outputs)} outputs in {gen_time:.1f}s ({throughput:.1f} samples/s)', flush=True)
         else:
             outputs = generate_completions(model=llm, tokenizer=tokenizer, prompts=prompts, max_new_tokens=args.max_tokens_per_call, batch_size=16, stop_id_sequences=stop_words)
-        assert len(outputs) == len(current_prompts)
+        assert len(outputs) == len(current_prompts) * (args.n_sampling if use_vllm_n_sampling else 1), f"Expected {len(current_prompts) * (args.n_sampling if use_vllm_n_sampling else 1)} outputs, got {len(outputs)}"
         remain_prompts = []
         remain_codes = []
-        for (i, query), output in zip(current_prompts, outputs):
-            output = output.rstrip()
-            query += output
-            if args.prompt_type == 'pal':
-                remain_prompts.append((i, query))
-                if '```python' in output:
-                    output = extract_program(query)
-                remain_codes.append(output)
-            elif args.prompt_type == 'cot':
-                end_prompts.append((i, query))
-            elif 'boxed' not in output and output.endswith('```'):
-                program = extract_program(query)
-                remain_prompts.append((i, query))
-                remain_codes.append(program)
-            else:
-                end_prompts.append((i, query))
+        
+        # 处理 n-sampling 模式下的输出
+        if use_vllm_n_sampling:
+            # n-sampling 模式：每个 prompt 有 n 个输出
+            output_idx = 0
+            for (i, query) in current_prompts:
+                for sample_idx in range(args.n_sampling):
+                    output = outputs[output_idx].rstrip()
+                    output_idx += 1
+                    full_query = query + output
+                    # 计算展开后的索引
+                    expanded_idx = i * args.n_sampling + sample_idx
+                    
+                    if args.prompt_type == 'pal':
+                        remain_prompts.append((expanded_idx, full_query))
+                        if '```python' in output:
+                            output = extract_program(full_query)
+                        remain_codes.append(output)
+                    elif args.prompt_type == 'cot':
+                        end_prompts.append((expanded_idx, full_query))
+                    elif 'boxed' not in output and output.endswith('```'):
+                        program = extract_program(full_query)
+                        remain_prompts.append((expanded_idx, full_query))
+                        remain_codes.append(program)
+                    else:
+                        end_prompts.append((expanded_idx, full_query))
+        else:
+            # 传统模式：一对一映射
+            for (i, query), output in zip(current_prompts, outputs):
+                output = output.rstrip()
+                query += output
+                if args.prompt_type == 'pal':
+                    remain_prompts.append((i, query))
+                    if '```python' in output:
+                        output = extract_program(query)
+                    remain_codes.append(output)
+                elif args.prompt_type == 'cot':
+                    end_prompts.append((i, query))
+                elif 'boxed' not in output and output.endswith('```'):
+                    program = extract_program(query)
+                    remain_prompts.append((i, query))
+                    remain_codes.append(program)
+                else:
+                    end_prompts.append((i, query))
         remain_results = executor.batch_apply(remain_codes)
         for k in range(len(remain_prompts)):
             i, query = remain_prompts[k]
@@ -253,10 +317,22 @@ def main(llm, tokenizer, data_name, args):
     end_prompts.extend(remain_prompts)
     end_prompts = sorted(end_prompts, key=lambda x: x[0])
     codes = []
-    assert len(input_prompts) == len(end_prompts)
-    for i in range(len(input_prompts)):
+    
+    # n-sampling 模式下，input_prompts 是 unique prompts，但 end_prompts 有 n_sampling 倍
+    expected_count = len(samples) * args.n_sampling
+    assert len(end_prompts) == expected_count, f"Expected {expected_count} end_prompts, got {len(end_prompts)}"
+    
+    for i in range(len(end_prompts)):
         _, end_prompt = end_prompts[i]
-        code = end_prompt.split(input_prompts[i])[-1].strip()
+        # 获取对应的原始 prompt（n-sampling 模式下需要除以 n_sampling）
+        if use_vllm_n_sampling:
+            base_prompt_idx = i // args.n_sampling
+            base_prompt = [sample['prompt'] for sample in samples][base_prompt_idx]
+            if args.apply_chat_template:
+                base_prompt = tokenizer.apply_chat_template([{'role': 'user', 'content': base_prompt.strip()}], tokenize=False, add_generation_prompt=True) if tokenizer else base_prompt
+        else:
+            base_prompt = input_prompts[i]
+        code = end_prompt.split(base_prompt)[-1].strip()
         for stop_word in stop_words:
             if stop_word in code:
                 code = code.split(stop_word)[0].strip()

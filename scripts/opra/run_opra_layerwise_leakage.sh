@@ -70,5 +70,9 @@ if [[ -n "${SEPARATE_PLOTS:-}" && "$SEPARATE_PLOTS" == "1" ]]; then
   CMD+=(--separate_plots)
 fi
 
+if [[ -n "${REPLOT:-}" && "$REPLOT" == "1" ]]; then
+  CMD+=(--replot)
+fi
+
 "${CMD[@]}"
 

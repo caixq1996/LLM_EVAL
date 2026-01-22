@@ -73,4 +73,8 @@ if [[ -n "$BASE_MODEL" ]]; then
   CMD+=(--base_model "$BASE_MODEL")
 fi
 
+if [[ -n "${REPLOT:-}" && "$REPLOT" == "1" ]]; then
+  CMD+=(--replot)
+fi
+
 "${CMD[@]}"
