@@ -40,7 +40,22 @@ from opra_spectral_utils import (
     resolve_base_model_path,
 )
 
-from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, create_legend
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, get_plot_visibility, create_legend
+
+PLOT_STYLE_DEFAULTS = {
+    "xlabel": 14,
+    "ylabel": 14,
+    "legend": 12,
+    "tick": 12,
+    "xtick": 12,
+    "ytick": 12,
+    "title": 16,
+    "colorbar": 12,
+    "show_title": False,
+    "show_xlabel": True,
+    "show_ylabel": True,
+    "show_legend": True,
+}
 
 
 def _parse_run_arg(run_arg: str) -> Tuple[str, str]:
@@ -213,12 +228,13 @@ def main() -> None:
     ap.add_argument("--steps", type=str, default="", help="Comma-separated global steps to plot (default: all)")
     ap.add_argument("--step", type=int, default=-1, help="Pick a specific global_step (deprecated; use --steps)")
     ap.add_argument("--replot", action="store_true", help="Skip computation and replot from existing CSV data")
-    add_font_size_args(ap)
+    add_font_size_args(ap, defaults=PLOT_STYLE_DEFAULTS)
     args = ap.parse_args()
     
     # Setup plot style with Times New Roman font
     setup_plot_style()
-    font_sizes = get_font_sizes(args)
+    font_sizes = get_font_sizes(args, defaults=PLOT_STYLE_DEFAULTS)
+    plot_visibility = get_plot_visibility(args, defaults=PLOT_STYLE_DEFAULTS)
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
     device = torch.device("cuda" if args.device in ("auto", "cuda") and torch.cuda.is_available() else "cpu")
@@ -246,10 +262,16 @@ def main() -> None:
                 cx = sub["energy_residual"].mean()
                 cy = sub["energy_principal"].mean()
                 ax.scatter(cx, cy, marker="*", s=260, edgecolors="black", label=f"{run} (Mean)")
-            ax.set_xlabel("Reasoning Adaptation (Residual Energy)", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-            ax.set_ylabel("Knowledge Distortion (Principal Energy)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-            ax.tick_params(axis='both', labelsize=font_sizes['tick'])
-            create_legend(ax, font_sizes)
+            if plot_visibility['show_xlabel']:
+                ax.set_xlabel("Reasoning Adaptation (Residual Energy)", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+            if plot_visibility['show_ylabel']:
+                ax.set_ylabel("Knowledge Distortion (Principal Energy)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+            if plot_visibility['show_title'] and args.title:
+                ax.set_title(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
+            ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+            ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
+            if plot_visibility['show_legend']:
+                create_legend(ax, font_sizes)
             ax.grid(True, linestyle="--", alpha=0.5)
             fig.tight_layout()
             out_path = out_dir / f"spectral_decoupling_step_{step}.png"
@@ -391,11 +413,16 @@ def main() -> None:
             cx = sub["energy_residual"].mean()
             cy = sub["energy_principal"].mean()
             ax.scatter(cx, cy, marker="*", s=260, edgecolors="black", label=f"{run} (Mean)")
-        ax.set_xlabel("Reasoning Adaptation (Residual Energy)", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-        ax.set_ylabel("Knowledge Distortion (Principal Energy)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-        # Title removed for publication
-        ax.tick_params(axis='both', labelsize=font_sizes['tick'])
-        create_legend(ax, font_sizes)
+        if plot_visibility['show_xlabel']:
+            ax.set_xlabel("Reasoning Adaptation (Residual Energy)", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+        if plot_visibility['show_ylabel']:
+            ax.set_ylabel("Knowledge Distortion (Principal Energy)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+        if plot_visibility['show_title'] and args.title:
+            ax.set_title(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
+        ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+        ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
+        if plot_visibility['show_legend']:
+            create_legend(ax, font_sizes)
         ax.grid(True, linestyle="--", alpha=0.5)
         fig.tight_layout()
         out_path = out_dir / f"spectral_decoupling_step_{step}.png"

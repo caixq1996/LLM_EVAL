@@ -71,7 +71,7 @@ def main() -> None:
     eval_root = Path(__file__).resolve().parents[1]
     if str(eval_root) not in sys.path:
         sys.path.insert(0, str(eval_root))
-    from tools.vi_curl_passk_kept_dropped import _plot_passk  # type: ignore
+    from tools.vi_curl_plot.vi_curl_passk_kept_dropped import _plot_passk  # type: ignore
 
     cfg = merged.get("config", {})
     ks = cfg.get("target_ks") or []

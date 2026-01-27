@@ -7,6 +7,9 @@
 
 set -x
 
+# Usage:
+#   bash scripts/vi_curl/run_vi_curl_passk_kept_dropped.sge --replot-only
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EVAL_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${EVAL_ROOT}"
@@ -100,6 +103,23 @@ LOG_DIR="${LOG_DIR:-${EVAL_ROOT}/eval_log/vi_curl/curriculum_passk_logs}"
 AUTO_MERGE_PARTS="${AUTO_MERGE_PARTS:-true}"
 MERGE_DELETE_PARTS="${MERGE_DELETE_PARTS:-false}"
 MERGE_ONLY="${MERGE_ONLY:-false}"
+REPLOT_ONLY="${REPLOT_ONLY:-false}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --replot-only)
+      REPLOT_ONLY="true"
+      shift
+      ;;
+    --merge-only)
+      MERGE_ONLY="true"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
 
 mkdir -p "${OUT_DIR}" "${LOG_DIR}"
 
@@ -183,7 +203,7 @@ run_one() {
     args+=( --part_id "${PART_ID}" --num_parts "${NUM_PARTS}" --no_plot )
   fi
 
-  "$PYTHON_BIN" -u tools/vi_curl_passk_kept_dropped.py "${args[@]}"
+  "$PYTHON_BIN" -u tools/vi_curl_plot/vi_curl_passk_kept_dropped.py "${args[@]}"
 }
 
 merge_one_parts() {
@@ -270,9 +290,56 @@ PY
   )
 }
 
+replot_existing() {
+  "$PYTHON_BIN" - "${OUT_DIR}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+out_dir = Path(sys.argv[1]).expanduser()
+if not out_dir.exists():
+    print(f"[WARN] OUT_DIR not found: {out_dir}")
+    sys.exit(0)
+
+eval_root = Path.cwd()
+if str(eval_root) not in sys.path:
+    sys.path.insert(0, str(eval_root))
+
+from tools.vi_curl_plot.vi_curl_passk_kept_dropped import _plot_passk  # type: ignore
+
+paths = sorted(out_dir.glob("vi_curl_passk__*.json"))
+count = 0
+for p in paths:
+    name = p.name
+    if "__part" in name or name.endswith(".partial.json"):
+        continue
+    payload = json.loads(p.read_text(encoding="utf-8"))
+    steps = payload.get("steps", [])
+    rows = payload.get("rows", [])
+    cfg = payload.get("config", {}) if isinstance(payload, dict) else {}
+    ks = cfg.get("target_ks") or cfg.get("passk_ks") or [1]
+    title = f"{payload.get('run_name', p.stem)} kept vs dropped pass@k"
+    out_base = p.with_suffix("")
+    saved = _plot_passk(steps=steps, rows=rows, ks=ks, out_path=out_base, title=title)
+    for s in saved:
+        print(f"[OK] Replotted: {s}")
+    count += 1
+
+if count == 0:
+    print(f"[WARN] No merged passk json found under: {out_dir}")
+PY
+}
+
 if [[ "${MERGE_ONLY}" == "true" ]]; then
   echo "[INFO] MERGE_ONLY=true: scan OUT_DIR and merge any complete part sets."
   auto_merge_parts_in_out_dir
+  exit 0
+fi
+
+if [[ "${REPLOT_ONLY}" == "true" ]]; then
+  echo "[INFO] REPLOT_ONLY=true: replot from existing json in OUT_DIR."
+  auto_merge_parts_in_out_dir
+  replot_existing
   exit 0
 fi
 

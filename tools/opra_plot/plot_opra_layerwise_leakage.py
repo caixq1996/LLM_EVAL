@@ -51,7 +51,22 @@ from opra_spectral_utils import (
     topk_svd,
 )
 
-from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, create_legend
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, get_plot_visibility, create_legend
+
+PLOT_STYLE_DEFAULTS = {
+    "xlabel": 14,
+    "ylabel": 14,
+    "legend": 12,
+    "tick": 12,
+    "xtick": 12,
+    "ytick": 12,
+    "title": 16,
+    "colorbar": 12,
+    "show_title": False,
+    "show_xlabel": True,
+    "show_ylabel": True,
+    "show_legend": True,
+}
 
 
 def _parse_run_arg(run_arg: str) -> Tuple[str, str]:
@@ -206,12 +221,13 @@ def main() -> None:
     ap.add_argument("--step", type=int, default=-1, help="Pick a specific global_step (deprecated; use --steps)")
     ap.add_argument("--separate_plots", action="store_true", help="Generate one figure per algorithm per step instead of combined plots")
     ap.add_argument("--replot", action="store_true", help="Skip computation and replot from existing CSV data")
-    add_font_size_args(ap)
+    add_font_size_args(ap, defaults=PLOT_STYLE_DEFAULTS)
     args = ap.parse_args()
     
     # Setup plot style with Times New Roman font
     setup_plot_style()
-    font_sizes = get_font_sizes(args)
+    font_sizes = get_font_sizes(args, defaults=PLOT_STYLE_DEFAULTS)
+    plot_visibility = get_plot_visibility(args, defaults=PLOT_STYLE_DEFAULTS)
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
     device = torch.device("cuda" if args.device in ("auto", "cuda") and torch.cuda.is_available() else "cpu")
@@ -254,10 +270,15 @@ def main() -> None:
 
                     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
                     sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True)
-                    ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-                    ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-                    ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+                    if plot_visibility['show_xlabel']:
+                        ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                    if plot_visibility['show_ylabel']:
+                        ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                    ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+                    ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
 
+                    if plot_visibility['show_title'] and args.title:
+                        fig.suptitle(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
                     fig.tight_layout()
                     safe_label = label.replace("/", "_").replace(" ", "_")
                     out_path = out_dir / f"{safe_label}_step_{step}.png"
@@ -283,10 +304,15 @@ def main() -> None:
                     pivot = pivot.sort_index()
                     ax = axes[idx]
                     sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=idx == run_count - 1)
-                    ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-                    ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-                    ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+                    if plot_visibility['show_xlabel']:
+                        ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                    if plot_visibility['show_ylabel']:
+                        ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                    ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+                    ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
 
+                if plot_visibility['show_title'] and args.title:
+                    fig.suptitle(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
                 fig.tight_layout()
                 out_path = out_dir / f"layerwise_leakage_step_{step}.png"
                 fig.savefig(out_path, dpi=300)
@@ -419,11 +445,15 @@ def main() -> None:
 
                 fig, ax = plt.subplots(1, 1, figsize=(8, 8))
                 sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=True)
-                # Title removed for publication
-                ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-                ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-                ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+                if plot_visibility['show_xlabel']:
+                    ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                if plot_visibility['show_ylabel']:
+                    ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+                ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
 
+                if plot_visibility['show_title'] and args.title:
+                    fig.suptitle(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
                 fig.tight_layout()
                 # Sanitize label for filename
                 safe_label = label.replace("/", "_").replace(" ", "_")
@@ -451,12 +481,15 @@ def main() -> None:
                 pivot = pivot.sort_index()
                 ax = axes[idx]
                 sns.heatmap(pivot, ax=ax, vmin=vmin, vmax=vmax, cmap="viridis", cbar=idx == run_count - 1)
-                # Title removed for publication
-                ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-                ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-                ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+                if plot_visibility['show_xlabel']:
+                    ax.set_xlabel("Module Type", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                if plot_visibility['show_ylabel']:
+                    ax.set_ylabel("Layer", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+                ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
 
-            # suptitle removed for publication
+            if plot_visibility['show_title'] and args.title:
+                fig.suptitle(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
             fig.tight_layout()
             out_path = out_dir / f"layerwise_leakage_step_{step}.png"
             fig.savefig(out_path, dpi=300)

@@ -30,6 +30,26 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# Import shared plot configuration
+try:
+    from plot_config import (
+        setup_plot_style,
+        add_font_size_args,
+        add_replot_args,
+        get_font_sizes,
+        FONT_FAMILY,
+    )
+    HAS_PLOT_CONFIG = True
+except ImportError:
+    HAS_PLOT_CONFIG = False
+    FONT_FAMILY = 'Times New Roman'
+    def setup_plot_style():
+        plt.rcParams['font.family'] = FONT_FAMILY
+        plt.rcParams['font.serif'] = ['Times New Roman', 'DejaVu Serif', 'serif']
+        plt.rcParams['pdf.fonttype'] = 42
+        plt.rcParams['ps.fonttype'] = 42
+        plt.rcParams['mathtext.fontset'] = 'stix'
+
 try:
     import seaborn as sns
 
@@ -339,33 +359,33 @@ def _plot_run(
     ax = axes[0]
     ax.plot(steps, diff_drop, color="#e74c3c", linewidth=2.0, label="Dropped (hard)")
     ax.plot(steps, diff_kept, color="#2ecc71", linewidth=2.0, label="Kept (easy)")
-    ax.set_ylabel("Difficulty")
+    ax.set_ylabel("Difficulty", fontfamily=FONT_FAMILY)
     if np.nanmin(df[["diff_kept", "diff_dropped"]].to_numpy()) >= 0.0 and np.nanmax(
         df[["diff_kept", "diff_dropped"]].to_numpy()
     ) <= 1.0:
         ax.set_ylim(0.0, 1.05)
     ax2 = ax.twinx()
     ax2.plot(steps, beta, color="#3498db", linestyle="--", linewidth=1.6, label="Beta (retention)")
-    ax2.set_ylabel("Beta")
+    ax2.set_ylabel("Beta", fontfamily=FONT_FAMILY)
     ax2.set_ylim(0.0, 1.05)
     lines = ax.get_lines() + ax2.get_lines()
-    ax.legend(lines, [l.get_label() for l in lines], loc="upper left")
-    ax.set_title(title)
+    ax.legend(lines, [l.get_label() for l in lines], loc="upper left", prop={'family': FONT_FAMILY})
+    # Title removed for publication
 
     # Panel 2: confidence dynamics
     ax = axes[1]
     ax.plot(steps, conf_mean, color="#2980b9", linewidth=2.0, label="Conf mean")
     ax.plot(steps, tau, color="#c0392b", linestyle="--", linewidth=1.8, label="Tau threshold")
-    ax.set_ylabel("Confidence / Tau")
-    ax.legend(loc="upper left")
+    ax.set_ylabel("Confidence / Tau", fontfamily=FONT_FAMILY)
+    ax.legend(loc="upper left", prop={'family': FONT_FAMILY})
 
     # Panel 3: correlation
     ax = axes[2]
     ax.plot(steps, corr, color="#8e44ad", linewidth=2.0, label="Conf-Diff corr")
     ax.axhline(0.0, color="black", linestyle="--", linewidth=1.0, alpha=0.4)
-    ax.set_ylabel("Correlation")
-    ax.set_xlabel("Training step")
-    ax.legend(loc="upper left")
+    ax.set_ylabel("Correlation", fontfamily=FONT_FAMILY)
+    ax.set_xlabel("Training step", fontfamily=FONT_FAMILY)
+    ax.legend(loc="upper left", prop={'family': FONT_FAMILY})
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
@@ -397,7 +417,36 @@ def main() -> None:
     ap.add_argument("--no_ema", action="store_false", dest="use_ema", help="Disable EMA smoothing.")
     ap.add_argument("--min_points", type=int, default=2)
     ap.add_argument("--dpi", type=int, default=200)
+    
+    # Font size arguments
+    if HAS_PLOT_CONFIG:
+        add_font_size_args(ap)
+        add_replot_args(ap)
+    else:
+        ap.add_argument('--fontsize_xlabel', type=int, default=14)
+        ap.add_argument('--fontsize_ylabel', type=int, default=14)
+        ap.add_argument('--fontsize_legend', type=int, default=12)
+        ap.add_argument('--fontsize_tick', type=int, default=12)
+        ap.add_argument('--fontsize_xtick', type=int, default=12)
+        ap.add_argument('--fontsize_ytick', type=int, default=12)
+        ap.add_argument('--fontsize_colorbar', type=int, default=12)
+        ap.add_argument('--replot', action='store_true', default=False,
+                        help='Regenerate plots from existing cached data')
+        ap.add_argument('--data_cache_path', type=str, default=None)
+    
     args = ap.parse_args()
+
+    setup_plot_style()
+    font_sizes = get_font_sizes(args)
+    plt.rcParams.update(
+        {
+            "font.size": font_sizes["tick"],
+            "axes.labelsize": font_sizes["xlabel"],
+            "legend.fontsize": font_sizes["legend"],
+            "xtick.labelsize": font_sizes["xtick"],
+            "ytick.labelsize": font_sizes["ytick"],
+        }
+    )
 
     models = _split_csv(args.models) + list(args.model)
     exps = _split_csv(args.exps) + list(args.exp)

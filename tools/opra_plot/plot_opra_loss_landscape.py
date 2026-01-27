@@ -41,7 +41,22 @@ from opra_spectral_utils import (
     resolve_run_dir,
 )
 
-from plot_config import setup_plot_style, add_font_size_args, get_font_sizes
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, get_plot_visibility
+
+PLOT_STYLE_DEFAULTS = {
+    "xlabel": 14,
+    "ylabel": 14,
+    "legend": 12,
+    "tick": 12,
+    "xtick": 12,
+    "ytick": 12,
+    "title": 16,
+    "colorbar": 12,
+    "show_title": False,
+    "show_xlabel": True,
+    "show_ylabel": True,
+    "show_legend": True,
+}
 
 
 def _parse_run_arg(run_arg: str) -> Tuple[str, str]:
@@ -293,12 +308,13 @@ def main() -> None:
     ap.add_argument("--shared_directions", action="store_true", default=True)
     ap.add_argument("--no_shared_directions", dest="shared_directions", action="store_false")
     ap.add_argument("--replot", action="store_true", help="Skip computation and replot from existing NPZ data")
-    add_font_size_args(ap)
+    add_font_size_args(ap, defaults=PLOT_STYLE_DEFAULTS)
     args = ap.parse_args()
     
     # Setup plot style with Times New Roman font
     setup_plot_style()
-    font_sizes = get_font_sizes(args)
+    font_sizes = get_font_sizes(args, defaults=PLOT_STYLE_DEFAULTS)
+    plot_visibility = get_plot_visibility(args, defaults=PLOT_STYLE_DEFAULTS)
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
     device = torch.device("cuda" if args.device in ("auto", "cuda") and torch.cuda.is_available() else "cpu")
@@ -332,10 +348,15 @@ def main() -> None:
             for idx, label in enumerate(labels):
                 ax = axes2d[idx]
                 cs = ax.contourf(X, Y, run_losses[label], levels=30, cmap="viridis")
-                ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-                ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-                ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+                if plot_visibility['show_xlabel']:
+                    ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                if plot_visibility['show_ylabel']:
+                    ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+                ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
                 fig2d.colorbar(cs, ax=ax, fraction=0.046, pad=0.04)
+            if plot_visibility['show_title'] and args.title:
+                fig2d.suptitle(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
             fig2d.tight_layout()
             fig2d.savefig(out_dir / f"loss_landscape_2d_step_{step}.png", dpi=300)
             fig2d.savefig(out_dir / f"loss_landscape_2d_step_{step}.pdf", dpi=300)
@@ -346,10 +367,16 @@ def main() -> None:
             for idx, label in enumerate(labels, start=1):
                 ax = fig3d.add_subplot(1, len(labels), idx, projection="3d")
                 ax.plot_surface(X, Y, run_losses[label], cmap="viridis", linewidth=0, antialiased=True)
-                ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-                ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+                if plot_visibility['show_xlabel']:
+                    ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+                if plot_visibility['show_ylabel']:
+                    ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
                 ax.set_zlabel("loss", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-                ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+                ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+                ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
+                ax.tick_params(axis='z', labelsize=font_sizes['ytick'])
+            if plot_visibility['show_title'] and args.title:
+                fig3d.suptitle(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
             fig3d.tight_layout()
             fig3d.savefig(out_dir / f"loss_landscape_3d_step_{step}.png", dpi=300)
             fig3d.savefig(out_dir / f"loss_landscape_3d_step_{step}.pdf", dpi=300)
@@ -474,12 +501,16 @@ def main() -> None:
         for idx, label in enumerate(labels):
             ax = axes2d[idx]
             cs = ax.contourf(X, Y, run_losses[label], levels=30, cmap="viridis")
-            # Title removed for publication
-            ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-            ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-            ax.tick_params(axis='both', labelsize=font_sizes['tick'])
+            if plot_visibility['show_xlabel']:
+                ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+            if plot_visibility['show_ylabel']:
+                ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+            ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+            ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
             fig2d.colorbar(cs, ax=ax, fraction=0.046, pad=0.04)
-        # suptitle removed for publication
+        if plot_visibility['show_title'] and args.title:
+            fig2d.suptitle(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
+        # suptitle optional via --show_title
         fig2d.tight_layout()
         out_2d = out_dir / f"loss_landscape_2d_step_{step}.png"
         fig2d.savefig(out_2d, dpi=300)
@@ -491,12 +522,17 @@ def main() -> None:
         for idx, label in enumerate(labels, start=1):
             ax = fig3d.add_subplot(1, len(labels), idx, projection="3d")
             ax.plot_surface(X, Y, run_losses[label], cmap="viridis", linewidth=0, antialiased=True)
-            # Title removed for publication
-            ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-            ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+            if plot_visibility['show_xlabel']:
+                ax.set_xlabel("alpha", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+            if plot_visibility['show_ylabel']:
+                ax.set_ylabel("beta", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
             ax.set_zlabel("loss", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-            ax.tick_params(axis='both', labelsize=font_sizes['tick'])
-        # suptitle removed for publication
+            ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+            ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
+            ax.tick_params(axis='z', labelsize=font_sizes['ytick'])
+        if plot_visibility['show_title'] and args.title:
+            fig3d.suptitle(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
+        # suptitle optional via --show_title
         fig3d.tight_layout()
         out_3d = out_dir / f"loss_landscape_3d_step_{step}.png"
         fig3d.savefig(out_3d, dpi=300)

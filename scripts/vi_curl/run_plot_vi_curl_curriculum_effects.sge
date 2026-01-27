@@ -47,6 +47,6 @@ if [[ "${USE_EMA}" != "true" ]]; then
   args+=( --no_ema )
 fi
 
-"${PYTHON_BIN}" -u tools/plot_vi_curl_curriculum_effects.py "${args[@]}"
+"${PYTHON_BIN}" -u tools/vi_curl_plot/plot_vi_curl_curriculum_effects.py "${args[@]}"
 
 echo "[OK] Curriculum plots saved under: ${OUT_DIR}"

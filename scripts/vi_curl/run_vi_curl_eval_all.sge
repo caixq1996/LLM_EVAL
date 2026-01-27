@@ -28,6 +28,7 @@ EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}"
 KEEP_HF_EXPORT="${KEEP_HF_EXPORT:-false}"
 RUN_VI_MULTI_SUBMIT="${RUN_VI_MULTI_SUBMIT:-false}"
 SKIP_NOCURL_SUBMIT="${SKIP_NOCURL_SUBMIT:-true}"
+REPLOT_ONLY="${REPLOT_ONLY:-false}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --submit)
@@ -44,6 +45,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-skip-nocurl)
       SKIP_NOCURL_SUBMIT="false"
+      shift
+      ;;
+    --replot-only)
+      REPLOT_ONLY="true"
       shift
       ;;
     *)
@@ -84,6 +89,8 @@ exec > >(tee -a "${_MAIN_LOG}") 2>&1
 # =======================================================
 # Multi-submit mode: 为 MODEL_ROOT 下每个子目录单独提交
 # =======================================================
+# Usage (replot only):
+#   bash scripts/vi_curl/run_vi_curl_eval_all.sge --replot-only
 if [[ -z "${JOB_ID:-}" && -z "${RUN_VI_SUBMITTED:-}" && "${RUN_VI_MULTI_SUBMIT:-false}" == "true" && "${RUN_VI_SUBMIT:-0}" == "1" ]]; then
   _MODEL_ROOT="${MODEL_ROOT:-/data/giil/caixq/ckpts/${EXP_NAMES}}"
   
@@ -333,6 +340,7 @@ run_passk() {
     export AUTO_MERGE_PARTS="${PASSK_AUTO_MERGE_PARTS}"
     export MERGE_DELETE_PARTS="${PASSK_MERGE_DELETE_PARTS}"
     export MERGE_ONLY="${PASSK_MERGE_ONLY}"
+    export REPLOT_ONLY="${REPLOT_ONLY}"
     if [[ -n "${PASSK_TAG}" ]]; then
       export TAG="${PASSK_TAG}"
     else
@@ -364,6 +372,7 @@ run_gradvar() {
     export AUTO_MERGE_PARTS="${GRAD_AUTO_MERGE_PARTS}"
     export MERGE_DELETE_PARTS="${GRAD_MERGE_DELETE_PARTS}"
     export MERGE_ONLY="${GRAD_MERGE_ONLY}"
+    export REPLOT_ONLY="${REPLOT_ONLY}"
     if [[ -n "${GRAD_TAG}" ]]; then
       export TAG="${GRAD_TAG}"
     else

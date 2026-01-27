@@ -41,7 +41,7 @@ if [[ -n "${SAVE_DIR}" ]]; then
   args+=( --save_dir "${SAVE_DIR}" )
 fi
 
-"$PYTHON_BIN" -u tools/plot_vi_curl_paper_figs.py "${args[@]}"
+"$PYTHON_BIN" -u tools/vi_curl_plot/plot_vi_curl_paper_figs.py "${args[@]}"
 
 if [[ -n "${SAVE_DIR}" ]]; then
   echo "[OK] Saved figures under: ${SAVE_DIR}"

@@ -27,6 +27,22 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
+# Import shared plot configuration
+try:
+    from plot_config import (
+        setup_plot_style as _setup_plot_style_base,
+        add_font_size_args,
+        add_replot_args,
+        get_font_sizes,
+        apply_font_to_axis,
+        create_legend,
+        FONT_FAMILY,
+    )
+    HAS_PLOT_CONFIG = True
+except ImportError:
+    HAS_PLOT_CONFIG = False
+    FONT_FAMILY = 'Times New Roman'
+
 try:
     from tqdm import tqdm
 except Exception:
@@ -119,8 +135,10 @@ METRIC_DATASET_Y_RANGES = {
 
 def parse_args():
     ap = argparse.ArgumentParser(description='Plot pass@k curves by algorithm category')
-    ap.add_argument('--target_dir', type=Path, required=True,
+    ap.add_argument('--target_dir', type=Path, default="../VI-CURL/eval_results/VI-CURL_deepscaler_diff_think-boxed",
                     help='Root dir of eval results')
+    ap.add_argument('--base_dir', type=Path, default="../VI-CURL/eval_results/VI-CURL_deepscaler_diff_think-boxed",
+                    help='Optional separate dir for base model results (e.g. project/LLM_EVAL/rl_reasoning_results)')
     ap.add_argument('--save_dir', type=Path, default=None,
                     help='Output directory (default: <target_dir>/_algo_curves)')
     ap.add_argument('--metrics', type=str, default='pass@1,pass@8',
@@ -136,6 +154,31 @@ def parse_args():
                     help='Disable VI-CuRL curve smoothing')
     ap.add_argument('--vi_curl_table', type=Path, default=None,
                     help='Path to main_results.tex for VI-CuRL final-point alignment')
+    
+    # Font size arguments
+    if HAS_PLOT_CONFIG:
+        add_font_size_args(ap)
+        add_replot_args(ap)
+    else:
+        ap.add_argument('--fontsize_xlabel', type=int, default=14)
+        ap.add_argument('--fontsize_ylabel', type=int, default=14)
+        ap.add_argument('--fontsize_legend', type=int, default=12)
+        ap.add_argument('--fontsize_tick', type=int, default=12)
+        ap.add_argument('--replot', action='store_true', default=False,
+                        help='Regenerate plots from existing cached data')
+        ap.add_argument('--data_cache_path', type=str, default=None)
+    
+    # New customization arguments
+    ap.add_argument('--auto_y_range', action='store_true', default=False,
+                    help='Force automatic Y-range calculation (ignoring METRIC_DATASET_Y_RANGES)')
+    ap.add_argument('--no_xlabel', action='store_true', default=False,
+                    help='Do not plot x-axis label')
+    ap.add_argument('--no_ylabel', action='store_true', default=False,
+                    help='Do not plot y-axis label')
+    ap.add_argument('--legend_specific_only', action='store_true', default=False,
+                    help='Only show legend on AIME 2024 w. Verifier pass@1 plot')
+
+    
     return ap.parse_args()
 
 # ----------------------------- Utilities ------------------------------
@@ -222,12 +265,56 @@ def auto_y_range(values: np.ndarray, stds: Optional[np.ndarray] = None) -> Tuple
     hi = min(100.0, hi + pad)
     if hi - lo < 1.0:
         mid = (hi + lo) * 0.5
-        lo = max(0.0, mid - 0.5)
-        hi = min(100.0, mid + 0.5)
     return (lo, hi)
 
 
-def compute_dataset_y_ranges(df: pd.DataFrame, base: str, metric: str) -> Dict[str, Tuple[float, float]]:
+def auto_y_range(values: Sequence[float], stds: Sequence[float]) -> Tuple[float, float]:
+    """Calculate nice Y-axis range based on values and standard deviations."""
+    if len(values) == 0:
+        return (0.0, 100.0)
+        
+    vals = np.array(values)
+    stds = np.array(stds)
+    # Filter valid
+    valid = np.isfinite(vals)
+    vals = vals[valid]
+    if len(vals) == 0:
+        return (0.0, 100.0)
+        
+    if len(stds) == len(vals):
+        stds = stds[valid]
+        stds = np.where(np.isfinite(stds), stds, 0.0)
+        lo = np.min(vals - stds)
+        hi = np.max(vals + stds)
+    else:
+        lo = np.min(vals)
+        hi = np.max(vals)
+        
+    span = hi - lo
+    if span == 0:
+        pad = 5.0
+    else:
+        pad = max(span * 0.05, 1.0)
+        
+    lo = max(0.0, lo - pad)
+    hi = min(100.0, hi + pad)
+    
+    # Ensure minimum span for aesthetics
+    if hi - lo < 1.0:
+        mid = (hi + lo) * 0.5
+        lo = max(0.0, mid - 0.5)
+        hi = min(100.0, mid + 0.5)
+        
+    return (lo, hi)
+
+
+def compute_dataset_y_ranges(
+    df: pd.DataFrame, 
+    base: str, 
+    metric: str, 
+    auto_y_range_flag: bool = False,
+    overrides: Optional[Dict[str, Dict[str, Dict[str, Tuple[float, float]]]]] = None
+) -> Dict[str, Tuple[float, float]]:
     df_sub = df[
         (df['base'].str.lower() == base.lower()) &
         (df['metric'].str.lower() == metric.lower())
@@ -236,11 +323,25 @@ def compute_dataset_y_ranges(df: pd.DataFrame, base: str, metric: str) -> Dict[s
     ranges: Dict[str, Tuple[float, float]] = {}
     for dataset in sorted(df_sub['dataset'].unique()):
         manual = metric_map.get(dataset)
-        if manual is not None:
+        # Debug print to verify logic
+        # print(f"[DEBUG] ds={dataset} manual={manual} auto_flag={auto_y_range_flag}")
+        if not auto_y_range_flag and manual is not None:
             ranges[dataset] = manual
         else:
             df_ds = df_sub[df_sub['dataset'] == dataset]
-            ranges[dataset] = auto_y_range(df_ds['value'].values, df_ds['std'].values)
+            vals = df_ds['value'].values.tolist()
+            stds = df_ds['std'].values.tolist()
+            
+            # Incorporate overrides if present (usually pass@1)
+            if overrides and metric.lower() == 'pass@1':
+                for cat in ALGO_CATEGORIES:
+                    ov = lookup_vicurl_override(overrides, base, cat, dataset)
+                    if ov:
+                        val, std = ov
+                        if val is not None and np.isfinite(val): vals.append(val)
+                        if std is not None and np.isfinite(std): stds.append(std)
+            
+            ranges[dataset] = auto_y_range(vals, stds)
     return ranges
 
 
@@ -506,18 +607,29 @@ def load_results(target_dir: Path) -> pd.DataFrame:
 
 # ----------------------------- Plotting -------------------------------
 
-def setup_plot_style(dpi: int = 200):
-    """Configure matplotlib for publication-quality plots."""
+def setup_plot_style(dpi: int = 200, font_sizes: Dict = None):
+    """Configure matplotlib for publication-quality plots with Times New Roman."""
+    if font_sizes is None:
+        font_sizes = {'xlabel': 14, 'ylabel': 14, 'legend': 12, 'tick': 12}
+    
+    # Use Times New Roman font
+    if HAS_PLOT_CONFIG:
+        _setup_plot_style_base()
+    else:
+        plt.rcParams['font.family'] = FONT_FAMILY
+        plt.rcParams['font.serif'] = ['Times New Roman', 'DejaVu Serif', 'serif']
+        plt.rcParams['pdf.fonttype'] = 42
+        plt.rcParams['ps.fonttype'] = 42
+        plt.rcParams['mathtext.fontset'] = 'stix'
+    
     plt.rcParams.update({
         'figure.dpi': dpi,
         'savefig.dpi': dpi,
-        'font.size': 14,
-        'font.family': 'sans-serif',
-        'axes.titlesize': 16,
-        'axes.labelsize': 14,
-        'legend.fontsize': 12,
-        'xtick.labelsize': 12,
-        'ytick.labelsize': 12,
+        'font.size': font_sizes.get('tick', 12),
+        'axes.labelsize': font_sizes.get('xlabel', 14),
+        'legend.fontsize': font_sizes.get('legend', 12),
+        'xtick.labelsize': font_sizes.get('tick', 12),
+        'ytick.labelsize': font_sizes.get('tick', 12),
         'axes.grid': True,
         'grid.linestyle': '--',
         'grid.alpha': 0.3,
@@ -538,9 +650,13 @@ def plot_algorithm_dataset(
     y_range: Tuple[float, float],
     vi_curl_better: bool = True,
     vi_curl_overrides: Optional[Dict[str, Dict[str, Dict[str, Tuple[float, float]]]]] = None,
+    show_xlabel: bool = True,
+    show_ylabel: bool = True,
+    show_legend: bool = True,
+    font_sizes: Dict[str, Any] = None,
 ):
     """Plot curl vs nocurl for a specific algorithm category on a specific dataset."""
-    setup_plot_style()
+    setup_plot_style(font_sizes=font_sizes)
     
     df_sub = df[
         (df['base'].str.lower() == base.lower()) &
@@ -601,19 +717,23 @@ def plot_algorithm_dataset(
     if not df_nocurl.empty:
         steps, values, stds = df_nocurl['step'].values, df_nocurl['value'].values, df_nocurl['std'].values
         ax.plot(steps, values, color=COLOR_NOCURL, linewidth=2.5,
-               label='Baseline', marker='s', markersize=6)
+               label='No Curriculum', marker='s', markersize=6)
         if np.isfinite(stds).any():
             stds_clean = np.where(np.isfinite(stds), stds, 0)
             ax.fill_between(steps, values - stds_clean, values + stds_clean,
                           color=COLOR_NOCURL, alpha=0.2)
     
-    ax.set_xlabel('Training Step', fontsize=14)
-    ax.set_ylabel(f'{metric.upper()} (%)', fontsize=14)
-    ax.set_title(f'{ALGO_CATEGORIES[category]["display_name"]} - {DATASET_DISPLAY_MAP.get(dataset, dataset)}',
-                fontsize=16)
+    if show_xlabel:
+        ax.set_xlabel('Training Step', fontsize=14, fontfamily=FONT_FAMILY)
+    if show_ylabel:
+        ax.set_ylabel(f'{metric.upper()} (%)', fontsize=14, fontfamily=FONT_FAMILY)
+    # Title removed for publication
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_ylim(y_range)
-    ax.legend(loc='best', frameon=False)
+    if show_legend:
+        ax.legend(loc='best', frameon=False, prop={'family': FONT_FAMILY})
+    ax.tick_params(axis='x', labelsize=font_sizes.get('xtick', 12))
+    ax.tick_params(axis='y', labelsize=font_sizes.get('ytick', 12))
     
     save_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path.with_suffix('.png'), bbox_inches='tight')
@@ -631,9 +751,12 @@ def plot_algorithm_average(
     y_range: Tuple[float, float],
     vi_curl_better: bool = True,
     vi_curl_overrides: Optional[Dict[str, Dict[str, Dict[str, Tuple[float, float]]]]] = None,
+    show_xlabel: bool = True,
+    show_ylabel: bool = True,
+    font_sizes: Dict[str, Any] = None,
 ):
     """Plot curl vs nocurl averaged across all datasets for an algorithm category."""
-    setup_plot_style()
+    setup_plot_style(font_sizes=font_sizes)
     
     df_sub = df[
         (df['base'].str.lower() == base.lower()) &
@@ -699,13 +822,16 @@ def plot_algorithm_average(
             ax.fill_between(steps, values - stds_clean, values + stds_clean,
                           color=COLOR_NOCURL, alpha=0.2)
     
-    ax.set_xlabel('Training Step', fontsize=14)
-    ax.set_ylabel(f'{metric.upper()} (%)', fontsize=14)
-    ax.set_title(f'{ALGO_CATEGORIES[category]["display_name"]} - Average Across Datasets',
-                fontsize=16)
+    if show_xlabel:
+        ax.set_xlabel('Training Step', fontsize=font_sizes.get('xlabel', 14), fontfamily=FONT_FAMILY)
+    if show_ylabel:
+        ax.set_ylabel(f'{metric.upper()} (%)', fontsize=font_sizes.get('ylabel', 14), fontfamily=FONT_FAMILY)
+    # Title removed for publication
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_ylim(y_range)
-    ax.legend(loc='best', frameon=False)
+    ax.legend(loc='best', frameon=False, prop={'family': FONT_FAMILY})
+    ax.tick_params(axis='x', labelsize=font_sizes.get('xtick', 12))
+    ax.tick_params(axis='y', labelsize=font_sizes.get('ytick', 12))
     
     save_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path.with_suffix('.png'), bbox_inches='tight')
@@ -945,6 +1071,75 @@ def main():
     else:
         print('[INFO] Y-Range: per-metric dataset map (edit METRIC_DATASET_Y_RANGES)')
 
+    # Get font sizes from args
+    # Get font sizes
+    if HAS_PLOT_CONFIG:
+        font_sizes = get_font_sizes(args)
+    else:
+        font_sizes = {
+            'xlabel': getattr(args, 'fontsize_xlabel', 14),
+            'ylabel': getattr(args, 'fontsize_ylabel', 14),
+            'legend': getattr(args, 'fontsize_legend', 12),
+            'tick': getattr(args, 'fontsize_tick', 12),
+            'xtick': getattr(args, 'fontsize_xtick', getattr(args, 'fontsize_tick', 12)),
+            'ytick': getattr(args, 'fontsize_ytick', getattr(args, 'fontsize_tick', 12)),
+            'fontfamily': FONT_FAMILY,
+        }
+    
+    # Data cache path for replot functionality
+    cache_path = save_dir / '_data_cache.csv'
+    if args.data_cache_path:
+        cache_path = Path(args.data_cache_path)
+    
+    # Load or cache data based on replot flag
+    if args.replot and cache_path.exists():
+        print(f'[INFO] Replot mode: loading cached data from {cache_path}')
+        df = pd.read_csv(cache_path)
+    else:
+        df = load_results(target_dir)
+        if not df.empty:
+            # Cache for future replot
+            df.to_csv(cache_path, index=False)
+            print(f'[INFO] Cached {len(df)} records to {cache_path}')
+    
+    # Load base model results if separate directory provided
+    if args.base_dir:
+        base_dir = Path(args.base_dir).expanduser().resolve()
+        if base_dir.exists():
+            print(f'[INFO] Loading base model results from: {base_dir}')
+            df_base_ext = load_results(base_dir)
+            if not df_base_ext.empty:
+                # Filter strictly for base model runs just in case
+                # (load_results might pick up others if dir contains them, but we primarily want base)
+                # Actually, let's just append everything found there, assuming USER points to right place.
+                # But standard usage implies these are base baselines. 
+                # Let's filter for runs starting with 'base' if deemed necessary, 
+                # but "base models" logic happens in `infer_base_and_algo`.
+                # So we simply concat.
+                
+                # To avoid duplicating if target_dir incidentally contains same base runs:
+                # We can drop duplicates based on base, algo, step, dataset, metric.
+                if not df.empty:
+                    df = pd.concat([df, df_base_ext], ignore_index=True)
+                else:
+                    df = df_base_ext
+                
+                # Deduplicate (keep last just in case, or first?)
+                # Usually experiments don't overlap with base repository.
+                df = df.drop_duplicates(subset=['base', 'algo', 'step', 'dataset', 'metric'])
+                print(f'[INFO] Integrated {len(df_base_ext)} base records. Total: {len(df)}')
+            else:
+                print(f'[WARN] No results found in base_dir: {base_dir}')
+        else:
+            print(f'[WARN] base_dir does not exist: {base_dir}')
+    
+    if df.empty:
+        print('[ERR] No data loaded.')
+        return
+    
+    print(f'[INFO] Loaded {len(df)} records')
+    
+    # Load table overrides for VI-CuRL final-point alignment
     table_overrides: Dict[str, Dict[str, Dict[str, Tuple[float, float]]]] = {}
     table_path = args.vi_curl_table or (target_dir / 'main_results' / 'main_results.tex')
     if table_path and table_path.exists():
@@ -955,13 +1150,6 @@ def main():
             print(f'[WARN] VI-CuRL table empty: {table_path}')
     elif args.vi_curl_table:
         print(f'[WARN] VI-CuRL table not found: {table_path}')
-    
-    df = load_results(target_dir)
-    if df.empty:
-        print('[ERR] No data loaded.')
-        return
-    
-    print(f'[INFO] Loaded {len(df)} records')
     
     datasets = sorted(df['dataset'].unique())
     bases = sorted(df['base'].unique())
@@ -975,7 +1163,7 @@ def main():
         
         for metric in metrics:
             metric_safe = metric.replace('@', '_at_')
-            dataset_ranges = compute_dataset_y_ranges(df, base, metric)
+            dataset_ranges = compute_dataset_y_ranges(df, base, metric, args.auto_y_range, table_overrides)
             df_metric = df[
                 (df['base'].str.lower() == base.lower()) &
                 (df['metric'].str.lower() == metric.lower())
@@ -986,7 +1174,41 @@ def main():
                 # Individual dataset plots
                 for dataset in datasets:
                     save_path = save_dir / base / category.replace(' ', '_').replace('.', '') / f'{metric_safe}_{dataset}'
-                    y_range = tuple(args.y_range) if args.y_range else dataset_ranges.get(dataset, avg_range)
+                    
+                    # Determine Y-range
+                    y_range = None
+                    if args.y_range:
+                        y_range = tuple(args.y_range)
+                    elif args.auto_y_range:
+                        # Adaptive per-chart calculation
+                        # Filter for just this dataset and category
+                        df_chart = df_metric[
+                            (df_metric['dataset'] == dataset) &
+                            df_metric['algo'].apply(lambda x: categorize_algo(x)[0] == category)
+                        ]
+                        vals = df_chart['value'].values.tolist()
+                        stds = df_chart['std'].values.tolist()
+                        
+                        # Add overrides if applicable (pass@1)
+                        if table_overrides and metric.lower() == 'pass@1':
+                            ov = lookup_vicurl_override(table_overrides, base, category, dataset)
+                            if ov:
+                                val, std = ov
+                                if val is not None and np.isfinite(val): vals.append(val)
+                                if std is not None and np.isfinite(std): stds.append(std)
+                                
+                        y_range = auto_y_range(vals, stds)
+                    else:
+                        # Use precomputed (likely manual) range
+                        y_range = dataset_ranges.get(dataset, avg_range)
+                    
+                    # Logic for legend visibility
+                    show_legend = True
+                    if args.legend_specific_only:
+                        # Only show legend for: w. Verifier + aime24x8 + pass@1
+                        is_target = (category == 'w. Verifier') and (dataset.lower() == 'aime24x8') and (metric.lower() == 'pass@1')
+                        show_legend = is_target
+
                     plot_algorithm_dataset(
                         df,
                         category,
@@ -998,13 +1220,40 @@ def main():
                         y_range,
                         args.vi_curl_better,
                         table_overrides,
+                        show_xlabel=not args.no_xlabel,
+                        show_ylabel=not args.no_ylabel,
+                        show_legend=show_legend,
+                        font_sizes=font_sizes,
                     )
                     if save_path.with_suffix('.png').exists():
                         print(f'  [OK] {category} / {dataset} / {metric}')
                 
                 # Average plot
                 save_path = save_dir / base / category.replace(' ', '_').replace('.', '') / f'{metric_safe}_average'
-                y_range = tuple(args.y_range) if args.y_range else avg_range
+                
+                # Determine Y-range for average plot
+                if args.y_range:
+                    y_range = tuple(args.y_range)
+                elif args.auto_y_range:
+                     # Filter for just this category (all datasets average)
+                    df_chart = df_metric[
+                        df_metric['algo'].apply(lambda x: categorize_algo(x)[0] == category)
+                    ]
+                    # Note: Auto-range on raw values of all datasets gives a rough bound for the average.
+                    # Ideally we'd compute the average curve first, but that happens inside plot_algorithm_average.
+                    # Using all raw values is a safe over-approximation usually.
+                    # Let's trust auto_y_range on the aggregate.
+                    vals = df_chart['value'].values.tolist()
+                    stds = df_chart['std'].values.tolist()
+                     # Add overrides (pass@1) - for average, overrides are complex (avg of overrrides?)
+                     # compute_vicurl_avg_override logic is inside plotting function.
+                     # For simplicity, we stick to raw data range for average plot, 
+                     # plus maybe expanding a bit? 
+                     # Actually, let's replicate the avg override logic if needed, but it's complex.
+                     # Let's hope raw data points cover the average. Usually they do.
+                    y_range = auto_y_range(vals, stds)
+                else:
+                    y_range = avg_range
                 plot_algorithm_average(
                     df,
                     category,
@@ -1015,6 +1264,9 @@ def main():
                     y_range,
                     args.vi_curl_better,
                     table_overrides,
+                    show_xlabel=not args.no_xlabel,
+                    show_ylabel=not args.no_ylabel,
+                    font_sizes=font_sizes,
                 )
                 if save_path.with_suffix('.png').exists():
                     print(f'  [OK] {category} / AVERAGE / {metric}')

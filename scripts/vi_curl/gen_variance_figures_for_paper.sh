@@ -43,7 +43,7 @@ if [[ -n "${FILTER}" ]]; then
     args+=( --filter "${FILTER}" )
 fi
 
-"$PYTHON_BIN" -u "${EVAL_ROOT}/tools/plot_variance_for_paper.py" "${args[@]}"
+"$PYTHON_BIN" -u "${EVAL_ROOT}/tools/vi_curl_plot/plot_variance_for_paper.py" "${args[@]}"
 
 # Copy to paper figures directory
 echo ""
@@ -60,7 +60,7 @@ done
 # Also generate the absolute variance comparison plots
 echo ""
 echo "[INFO] Generating additional absolute variance plots..."
-"$PYTHON_BIN" -u "${EVAL_ROOT}/tools/plot_variance_absolute.py" \
+"$PYTHON_BIN" -u "${EVAL_ROOT}/tools/vi_curl_plot/plot_variance_absolute.py" \
     --grad_variance_dir "${GRAD_VARIANCE_DIR}" \
     --out_dir "${TEMP_OUT_DIR}"
 

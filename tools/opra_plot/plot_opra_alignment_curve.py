@@ -56,7 +56,7 @@ from opra_spectral_utils import (
     topk_svd,
 )
 
-from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, create_legend
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, get_plot_visibility, create_legend
 
 _WANDB_RUN_RE = re.compile(r"^run-")
 
@@ -73,6 +73,21 @@ ALGO_NAME_MAP = {
     "qlora": "QLoRA",
     "olora": "OLoRA",
     "oft": "OFT",
+}
+
+PLOT_STYLE_DEFAULTS = {
+    "xlabel": 14,
+    "ylabel": 14,
+    "legend": 12,
+    "tick": 12,
+    "xtick": 12,
+    "ytick": 12,
+    "title": 16,
+    "colorbar": 12,
+    "show_title": False,
+    "show_xlabel": True,
+    "show_ylabel": True,
+    "show_legend": True,
 }
 
 
@@ -440,12 +455,13 @@ def main() -> None:
     ap.add_argument("--title", type=str, default="Spectral Alignment Across Steps")
     ap.add_argument("--steps", type=str, default="", help="Comma-separated step numbers to keep (default: all)")
     ap.add_argument("--replot", action="store_true", help="Skip computation and replot from existing CSV data")
-    add_font_size_args(ap)
+    add_font_size_args(ap, defaults=PLOT_STYLE_DEFAULTS)
     args = ap.parse_args()
     
     # Setup plot style with Times New Roman font
     setup_plot_style()
-    font_sizes = get_font_sizes(args)
+    font_sizes = get_font_sizes(args, defaults=PLOT_STYLE_DEFAULTS)
+    plot_visibility = get_plot_visibility(args, defaults=PLOT_STYLE_DEFAULTS)
 
     checkpoint_root = resolve_checkpoint_root(args.checkpoint_root)
     device = torch.device("cuda" if args.device in ("auto", "cuda") and torch.cuda.is_available() else "cpu")
@@ -488,11 +504,17 @@ def main() -> None:
         if not plotted:
             print("[ERROR] No data available for plotting")
             return
-        ax.set_xlabel("Global Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-        ax.set_ylabel("Alignment Ratio (eta)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+        if plot_visibility['show_xlabel']:
+            ax.set_xlabel("Global Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+        if plot_visibility['show_ylabel']:
+            ax.set_ylabel("Alignment Ratio (eta)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+        if plot_visibility['show_title'] and args.title:
+            ax.set_title(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
         ax.grid(True, linestyle="--", alpha=0.4)
-        ax.tick_params(axis='both', labelsize=font_sizes['tick'])
-        create_legend(ax, font_sizes)
+        ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+        ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
+        if plot_visibility['show_legend']:
+            create_legend(ax, font_sizes)
         fig.tight_layout()
         fig.savefig(out_dir / "alignment_curve.png", dpi=300)
         fig.savefig(out_dir / "alignment_curve.pdf", dpi=300)
@@ -760,12 +782,17 @@ def main() -> None:
     if not plotted:
         print("[ERROR] No data available for plotting")
         return
-    ax.set_xlabel("Global Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-    ax.set_ylabel("Alignment Ratio (eta)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-    # Title removed for publication
+    if plot_visibility['show_xlabel']:
+        ax.set_xlabel("Global Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+    if plot_visibility['show_ylabel']:
+        ax.set_ylabel("Alignment Ratio (eta)", fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+    if plot_visibility['show_title'] and args.title:
+        ax.set_title(args.title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
     ax.grid(True, linestyle="--", alpha=0.4)
-    ax.tick_params(axis='both', labelsize=font_sizes['tick'])
-    create_legend(ax, font_sizes)
+    ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+    ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
+    if plot_visibility['show_legend']:
+        create_legend(ax, font_sizes)
     fig.tight_layout()
     fig.savefig(out_dir / "alignment_curve.png", dpi=300)
     fig.savefig(out_dir / "alignment_curve.pdf", dpi=300)

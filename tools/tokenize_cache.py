@@ -95,12 +95,14 @@ def preprocess_dataset(
     data_dir: str,
     prompt_type: str = 'cot',
     apply_chat_template: bool = False,
+    split: str = 'test',
 ) -> List[List[int]]:
     """Load and tokenize a dataset."""
     from data_loader import load_data
-    from utils import construct_prompt, parse_question
+    from parser import parse_question
+    from utils import construct_prompt
     
-    examples = load_data(data_name, data_dir=data_dir)
+    examples = load_data(data_name, split, data_dir=data_dir)
     token_ids_list = []
     
     for example in examples:
@@ -131,6 +133,7 @@ def main():
     parser.add_argument('--cache_dir', type=str, default=None)
     parser.add_argument('--prompt_type', type=str, default='think-boxed')
     parser.add_argument('--apply_chat_template', action='store_true')
+    parser.add_argument('--split', type=str, default='test')
     args = parser.parse_args()
     
     print(f"Loading tokenizer from {args.model_path}...")
@@ -151,7 +154,8 @@ def main():
         try:
             token_ids = preprocess_dataset(
                 tokenizer, data_name, args.data_dir,
-                args.prompt_type, args.apply_chat_template
+                args.prompt_type, args.apply_chat_template,
+                split=args.split,
             )
             cache.save_cache(data_name, token_ids, {
                 'prompt_type': args.prompt_type,

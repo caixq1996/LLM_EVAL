@@ -419,14 +419,14 @@ run_plots() {
   echo "[INFO] === Generating bias-variance plots ==="
   
   # Bias-variance combined plots
-  "${PYTHON_BIN}" "${EVAL_ROOT}/tools/plot_bias_variance.py" \
+  "${PYTHON_BIN}" "${EVAL_ROOT}/tools/vi_curl_plot/plot_bias_variance.py" \
     --grad_variance_dir "${GRAD_OUT_DIR}" \
     --out_dir "${PLOT_OUT_DIR}" \
     --paper_figure
   
   # Variance absolute plots (kept vs full)
   echo "[INFO] === Generating variance absolute plots ==="
-  "${PYTHON_BIN}" "${EVAL_ROOT}/tools/plot_variance_absolute.py" \
+  "${PYTHON_BIN}" "${EVAL_ROOT}/tools/vi_curl_plot/plot_variance_absolute.py" \
     --grad_variance_dir "${GRAD_OUT_DIR}" \
     --out_dir "${VAR_PLOT_OUT_DIR}"
   

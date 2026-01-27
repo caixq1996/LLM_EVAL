@@ -11,6 +11,8 @@ __pycache__/
 # Evaluation results and logs (large directories)
 eval_log/
 eval_log_v2/
+eval_log_v3/
+eval_results/
 outputs/
 wandb/
 

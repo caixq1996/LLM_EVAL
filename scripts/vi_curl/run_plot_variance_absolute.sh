@@ -42,6 +42,6 @@ if [[ "${NO_GRID}" == "true" ]]; then
     args+=( --no_grid )
 fi
 
-"$PYTHON_BIN" -u "${EVAL_ROOT}/tools/plot_variance_absolute.py" "${args[@]}"
+"$PYTHON_BIN" -u "${EVAL_ROOT}/tools/vi_curl_plot/plot_variance_absolute.py" "${args[@]}"
 
 echo "[DONE] Plots saved to ${OUT_DIR}"

@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, create_legend
+from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, get_plot_visibility, create_legend
 
 # Algorithm name mapping for legend
 ALGO_NAME_MAP = {
@@ -52,6 +52,21 @@ ALGO_COLORS = {
     "QLoRA": "#bcbd22",
     "OLoRA": "#17becf",
     "OFT": "#ff9896",
+}
+
+PLOT_STYLE_DEFAULTS = {
+    "xlabel": 14,
+    "ylabel": 14,
+    "legend": 12,
+    "tick": 12,
+    "xtick": 12,
+    "ytick": 12,
+    "title": 16,
+    "colorbar": 12,
+    "show_title": False,
+    "show_xlabel": True,
+    "show_ylabel": True,
+    "show_legend": True,
 }
 
 
@@ -159,6 +174,8 @@ def plot_eta_curves(
     ylabel: str,
     out_path: Path,
     font_sizes: Dict,
+    plot_visibility: Dict[str, bool],
+    title: Optional[str] = None,
 ):
     """Plot eta curves for all algorithms."""
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -170,11 +187,16 @@ def plot_eta_curves(
         color = ALGO_COLORS.get(algo_name, None)
         ax.plot(df["step"], df[metric], label=algo_name, color=color, linewidth=2)
     
-    ax.set_xlabel("Training Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
-    ax.set_ylabel(ylabel, fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
-    # Title removed for publication
-    ax.tick_params(axis='both', labelsize=font_sizes['tick'])
-    create_legend(ax, font_sizes)
+    if plot_visibility['show_xlabel']:
+        ax.set_xlabel("Training Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
+    if plot_visibility['show_ylabel']:
+        ax.set_ylabel(ylabel, fontsize=font_sizes['ylabel'], fontfamily=font_sizes['fontfamily'])
+    if plot_visibility['show_title'] and title:
+        ax.set_title(title, fontsize=font_sizes['title'], fontfamily=font_sizes['fontfamily'])
+    ax.tick_params(axis='x', labelsize=font_sizes['xtick'])
+    ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
+    if plot_visibility['show_legend']:
+        create_legend(ax, font_sizes)
     ax.grid(True, alpha=0.3)
     ax.set_yscale("log") if metric == "delta_w_eta" else None
     
@@ -193,13 +215,15 @@ def main():
                         help="Filter for model name in experiment_name")
     parser.add_argument("--out_dir", type=str, default="/home/caixq/project/LLM_EVAL/eval_log/opra/wandb_eta",
                         help="Output directory for plots")
+    parser.add_argument("--title", type=str, default="", help="Optional plot title")
     parser.add_argument("--replot", action="store_true", help="Skip computation and replot from existing CSV data")
-    add_font_size_args(parser)
+    add_font_size_args(parser, defaults=PLOT_STYLE_DEFAULTS)
     args = parser.parse_args()
     
     # Setup plot style with Times New Roman font
     setup_plot_style()
-    font_sizes = get_font_sizes(args)
+    font_sizes = get_font_sizes(args, defaults=PLOT_STYLE_DEFAULTS)
+    plot_visibility = get_plot_visibility(args, defaults=PLOT_STYLE_DEFAULTS)
     
     wandb_root = Path(args.wandb_root)
     out_dir = Path(args.out_dir) / args.model_filter
@@ -226,6 +250,8 @@ def main():
             ylabel="grad_eta (gradient's desire to modify principal space)",
             out_path=out_dir / "grad_eta_curve",
             font_sizes=font_sizes,
+            plot_visibility=plot_visibility,
+            title=args.title or None,
         )
         
         # Plot delta_w_eta
@@ -235,6 +261,8 @@ def main():
             ylabel="delta_w_eta (actual modification to principal space)",
             out_path=out_dir / "delta_w_eta_curve",
             font_sizes=font_sizes,
+            plot_visibility=plot_visibility,
+            title=args.title or None,
         )
         
         print(f"[INFO] Replot complete.")
@@ -281,6 +309,8 @@ def main():
         ylabel="grad_eta (gradient's desire to modify principal space)",
         out_path=out_dir / "grad_eta_curve",
         font_sizes=font_sizes,
+        plot_visibility=plot_visibility,
+        title=args.title or None,
     )
     
     # Plot delta_w_eta
@@ -290,6 +320,8 @@ def main():
         ylabel="delta_w_eta (actual modification to principal space)",
         out_path=out_dir / "delta_w_eta_curve",
         font_sizes=font_sizes,
+        plot_visibility=plot_visibility,
+        title=args.title or None,
     )
     
     print(f"[INFO] All plots saved to {out_dir}")

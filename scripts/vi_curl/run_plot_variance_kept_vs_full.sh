@@ -48,6 +48,6 @@ if [[ "${RATIO_ONLY}" == "true" ]]; then
     args+=( --ratio_only )
 fi
 
-"$PYTHON_BIN" -u "${EVAL_ROOT}/tools/plot_variance_kept_vs_full.py" "${args[@]}"
+"$PYTHON_BIN" -u "${EVAL_ROOT}/tools/vi_curl_plot/plot_variance_kept_vs_full.py" "${args[@]}"
 
 echo "[DONE] Plots saved to ${OUT_DIR}"

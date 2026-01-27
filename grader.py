@@ -355,7 +355,13 @@ def call_with_timeout(func, *args, timeout=1, **kwargs):
     p.join(timeout)
     if p.is_alive():
         p.terminate()
-        p.join()
+        p.join(0.2)
+        if p.is_alive():
+            try:
+                p.kill()
+            except Exception:
+                pass
+            p.join(0.2)
         return False
     try:
         return bool(output_queue.get_nowait())

@@ -109,7 +109,7 @@ def main() -> None:
     eval_root = Path(__file__).resolve().parents[1]
     if str(eval_root) not in sys.path:
         sys.path.insert(0, str(eval_root))
-    from tools.vf_curl_grad_variance import plot_results  # type: ignore
+    from tools.vi_curl_plot.vf_curl_grad_variance import plot_results  # type: ignore
 
     saved = plot_results(
         steps=merged["steps"],
@@ -159,7 +159,7 @@ def main() -> None:
                         ks.append(int(k))
         ks = sorted(set(ks)) or [1]
 
-        from tools.vi_curl_passk_kept_dropped import _plot_passk  # type: ignore
+        from tools.vi_curl_plot.vi_curl_passk_kept_dropped import _plot_passk  # type: ignore
 
         saved = _plot_passk(
             steps=passk_payload["steps"],

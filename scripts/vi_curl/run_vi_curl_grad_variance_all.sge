@@ -22,6 +22,9 @@ set -x
 # Prompt config is kept consistent with run_qwen_eval_all.sge naming:
 #   PROMPT_TYPE, MAX_TOKENS (mapped to --max_new_tokens)
 # -------------------------------------------------------
+#
+# Usage (replot only):
+#   bash scripts/vi_curl/run_vi_curl_grad_variance_all.sge --replot-only
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EVAL_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -145,6 +148,23 @@ BASELINE_MODE="${BASELINE_MODE:-auto}"   # auto | none
 AUTO_MERGE_PARTS="${AUTO_MERGE_PARTS:-true}"
 MERGE_DELETE_PARTS="${MERGE_DELETE_PARTS:-false}"
 MERGE_ONLY="${MERGE_ONLY:-false}"   # if true, just scan OUT_DIR and merge any complete part sets
+REPLOT_ONLY="${REPLOT_ONLY:-false}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --replot-only)
+      REPLOT_ONLY="true"
+      shift
+      ;;
+    --merge-only)
+      MERGE_ONLY="true"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
 
 mkdir -p "${EVAL_ROOT}/eval_log"
 mkdir -p "${OUT_DIR}"
@@ -276,9 +296,63 @@ PY
   )
 }
 
+replot_existing() {
+  "$PYTHON_BIN" - "${OUT_DIR}" "${PLOT_BASELINE_FULL_ONLY}" <<'PY'
+import sys
+from pathlib import Path
+
+out_dir = Path(sys.argv[1]).expanduser()
+baseline_full_only = str(sys.argv[2]).lower() == "true"
+
+if not out_dir.exists():
+    print(f"[WARN] OUT_DIR not found: {out_dir}")
+    sys.exit(0)
+
+eval_root = Path.cwd()
+if str(eval_root) not in sys.path:
+    sys.path.insert(0, str(eval_root))
+
+from tools.vi_curl_plot.vf_curl_grad_variance import plot_results, _read_json  # type: ignore
+
+paths = sorted(out_dir.glob("vf_curl_grad_variance__*.json"))
+count = 0
+for p in paths:
+    name = p.name
+    if "__part" in name or name.endswith(".partial.json"):
+        continue
+    payload = _read_json(p)
+    steps = payload.get("steps", [])
+    rows = payload.get("rows", [])
+    base_rows = payload.get("baseline_rows")
+    title = payload.get("title", "")
+    out_base = p.with_suffix("")
+    saved = plot_results(
+        steps=steps,
+        rows=rows,
+        baseline_rows=base_rows,
+        out_path=out_base,
+        title=title,
+        baseline_full_only=baseline_full_only,
+    )
+    for s in saved:
+        print(f"[OK] Replotted: {s}")
+    count += 1
+
+if count == 0:
+    print(f"[WARN] No merged grad_variance json found under: {out_dir}")
+PY
+}
+
 if [[ "${MERGE_ONLY}" == "true" ]]; then
   echo "[INFO] MERGE_ONLY=true: scan OUT_DIR and merge any complete part sets."
   auto_merge_parts_in_out_dir
+  exit 0
+fi
+
+if [[ "${REPLOT_ONLY}" == "true" ]]; then
+  echo "[INFO] REPLOT_ONLY=true: replot from existing json in OUT_DIR."
+  auto_merge_parts_in_out_dir
+  replot_existing
   exit 0
 fi
 
@@ -425,7 +499,7 @@ run_one() {
     echo "[INFO]   baseline: $(basename "${baseline_dir}")"
   fi
 
-  "$PYTHON_BIN" -u "${EVAL_ROOT}/tools/vf_curl_grad_variance.py" "${args[@]}"
+  "$PYTHON_BIN" -u "${EVAL_ROOT}/tools/vi_curl_plot/vf_curl_grad_variance.py" "${args[@]}"
 }
 
 MODEL_ROOTS=()

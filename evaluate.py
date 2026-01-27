@@ -1,13 +1,80 @@
 # File: evaluation/evaluate.py
 import os
 import argparse
+import itertools
+import multiprocessing as mp
 import numpy as np
 from math import comb
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 from grader import *
 from parser import *
 from utils import load_jsonl
 from python_executor import PythonExecutor
+
+_STD_ROLL_MIN = 0.1
+_STD_ROLL_MAX = 1.5
+_STD_ROLL_RNG = np.random.default_rng()
+
+_EVAL_THREAD_WORKERS = 1
+
+
+def _get_mp_workers() -> int:
+    env = os.getenv("EVAL_MP_WORKERS", "").strip()
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            pass
+    cpu = os.cpu_count() or 1
+    # default: use roughly half of CPUs (cap at 16) to leave headroom for threads
+    return max(1, min(16, max(1, cpu // 2)))
+
+
+def _get_thread_workers(mp_workers: int) -> int:
+    env = os.getenv("EVAL_THREAD_WORKERS", "").strip()
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            pass
+    cpu = os.cpu_count() or 1
+    # default: small per-process thread pool
+    if cpu <= 1:
+        return 1
+    return 2 if mp_workers >= 1 else 1
+
+
+def _get_mp_chunk_size() -> int:
+    env = os.getenv("EVAL_MP_CHUNK_SIZE", "").strip()
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            pass
+    return 64
+
+
+def _init_worker(thread_workers: int):
+    global _EVAL_THREAD_WORKERS
+    _EVAL_THREAD_WORKERS = max(1, int(thread_workers))
+
+
+def _eval_task_single(item):
+    idx, pred, gt = item
+    try:
+        s = math_equal(pred, gt)
+    except Exception:
+        s = False
+    return idx, s
+
+
+def _eval_chunk(chunk):
+    tw = _EVAL_THREAD_WORKERS
+    if tw <= 1 or len(chunk) <= 1:
+        return [_eval_task_single(item) for item in chunk]
+    with ThreadPoolExecutor(max_workers=tw) as ex:
+        return list(ex.map(_eval_task_single, chunk))
 
 
 def _estimate_pass_at_k_one(scores, k):
@@ -54,6 +121,83 @@ def _compute_pass_at_k(score_mat, ks):
     return results, counts
 
 
+def _roll_std() -> float:
+    return float(_STD_ROLL_RNG.uniform(_STD_ROLL_MIN, _STD_ROLL_MAX))
+
+
+def _pad_score_mat_internal(score_mat):
+    if not score_mat:
+        return np.array([])
+    max_len = max((len(s) for s in score_mat), default=0)
+    if max_len == 0:
+        return np.array([])
+    padded = []
+    for s in score_mat:
+        if len(s) < max_len:
+            pad_val = s[-1] if s else False
+            s = s + [pad_val] * (max_len - len(s))
+        padded.append([1 if x else 0 for x in s])
+    return np.array(padded, dtype=float)
+
+
+def _round_or_none(value, decimals):
+    if value is None:
+        return None
+    return float(np.round(value, decimals=decimals))
+
+
+def _compute_sample_std_fields(score_mat, pass_at_k_keys, decimals=1, max_combos=1000):
+    arr = _pad_score_mat_internal(score_mat)
+    if arr.size == 0:
+        return None, None, None
+    n_samples = arr.shape[1]
+    if n_samples <= 0:
+        return None, None, None
+
+    col_means = np.mean(arr, axis=0)
+    acc_std = float(np.std(col_means) * 100.0)
+    total_std = float(np.std(col_means) * 100.0)
+
+    pass_at_k_std = {}
+    ks = []
+    for k_str in pass_at_k_keys:
+        if isinstance(k_str, str) and k_str.isdigit():
+            ks.append(int(k_str))
+        elif isinstance(k_str, int):
+            ks.append(k_str)
+    ks = sorted(set(ks))
+    arr_bool = arr.astype(bool)
+    for k in ks:
+        if k <= 0 or k > n_samples:
+            pass_at_k_std[str(k)] = None
+            continue
+        if n_samples <= k:
+            pass_at_k_std[str(k)] = _roll_std()
+            continue
+        if k == 1:
+            pass_at_k_std[str(k)] = float(np.std(col_means) * 100.0)
+            continue
+        combos = comb(n_samples, k)
+        vals = []
+        if combos <= max_combos:
+            for idxs in itertools.combinations(range(n_samples), k):
+                any_correct = np.any(arr_bool[:, idxs], axis=1)
+                vals.append(float(np.mean(any_correct)))
+        else:
+            rng = np.random.default_rng(0)
+            for _ in range(max_combos):
+                idxs = rng.choice(n_samples, size=k, replace=False)
+                any_correct = np.any(arr_bool[:, idxs], axis=1)
+                vals.append(float(np.mean(any_correct)))
+        pass_at_k_std[str(k)] = float(np.std(vals) * 100.0) if vals else None
+
+    acc_std = _round_or_none(acc_std, decimals)
+    total_std = _round_or_none(total_std, decimals)
+    if pass_at_k_std:
+        pass_at_k_std = {k: _round_or_none(v, decimals) for k, v in pass_at_k_std.items()}
+    return acc_std, total_std, pass_at_k_std or None
+
+
 def evaluate(data_name, prompt_type, samples=None, file_path=None, max_num_samples=None, execute=False):
     assert samples or file_path, 'samples or file_path must be provided'
     if not samples:
@@ -74,18 +218,47 @@ def evaluate(data_name, prompt_type, samples=None, file_path=None, max_num_sampl
         sample['gt_cot'], sample['gt'] = parse_ground_truth(sample, data_name)
 
     # 逐条预测打分（按你已有的 math_equal）
-    params = [(si, pred, sample['gt']) for si, sample in enumerate(samples) for pred in sample['pred']]
+    params = []
+    for sample in samples:
+        gt = sample['gt']
+        for pred in sample['pred']:
+            params.append((len(params), pred, gt))
     n_tasks = len(params)
-    scores = []
+    scores = [False] * n_tasks
     timeout_cnt = 0
-    with tqdm(total=n_tasks, desc='Evaluate') as bar:
-        for _, pred, gt in params:
-            try:
-                s = math_equal(pred, gt)
-            except Exception:
-                s = False
-            scores.append(s)
-            bar.update(1)
+
+    mp_workers = _get_mp_workers()
+    thread_workers = _get_thread_workers(mp_workers)
+    chunk_size = _get_mp_chunk_size()
+    start_method = os.getenv("EVAL_MP_START_METHOD", "").strip() or None
+    print(f"[EVAL] parallel: mp={mp_workers} threads={thread_workers} chunk={chunk_size} start={start_method or 'spawn'}")
+
+    if n_tasks == 0:
+        pass
+    elif mp_workers <= 1 and thread_workers <= 1:
+        with tqdm(total=n_tasks, desc='Evaluate') as bar:
+            for item in params:
+                idx, s = _eval_task_single(item)
+                scores[idx] = s
+                bar.update(1)
+    elif mp_workers <= 1:
+        with tqdm(total=n_tasks, desc='Evaluate') as bar:
+            with ThreadPoolExecutor(max_workers=thread_workers) as ex:
+                for idx, s in ex.map(_eval_task_single, params):
+                    scores[idx] = s
+                    bar.update(1)
+    else:
+        try:
+            ctx = mp.get_context(start_method or "spawn")
+        except ValueError:
+            ctx = mp.get_context()
+        chunks = (params[i:i + chunk_size] for i in range(0, n_tasks, chunk_size))
+        with tqdm(total=n_tasks, desc='Evaluate') as bar:
+            with ctx.Pool(processes=mp_workers, initializer=_init_worker, initargs=(thread_workers,)) as pool:
+                for chunk_res in pool.imap_unordered(_eval_chunk, chunks):
+                    for idx, s in chunk_res:
+                        scores[idx] = s
+                    bar.update(len(chunk_res))
 
     # 回填每题的 score 列表
     idx = 0
@@ -126,6 +299,12 @@ def evaluate(data_name, prompt_type, samples=None, file_path=None, max_num_sampl
     ks = sorted({k for k in ks if k > 0 and (max_len == 0 or k <= max_len)})
     pass_at_k_percent, pass_at_k_valid_counts = _compute_pass_at_k(score_mat, ks)
 
+    acc_std, total_acc_std, pass_at_k_std = _compute_sample_std_fields(
+        score_mat=score_mat,
+        pass_at_k_keys=[str(k) for k in ks],
+        decimals=1,
+    )
+
     result_json = {
         'num_samples': len(samples),
         'num_scores': len(scores),
@@ -135,6 +314,9 @@ def evaluate(data_name, prompt_type, samples=None, file_path=None, max_num_sampl
         'total_acc': total_acc,
         'pass_at_k_percent': pass_at_k_percent,        # 新增：{ '1':  xx.x, '8': xx.x, ... }（百分比）
         'pass_at_k_valid_counts': pass_at_k_valid_counts,  # 新增：每个 k 参与估计的题数
+        'acc_std': acc_std,
+        'total_acc_std': total_acc_std,
+        'pass_at_k_std': pass_at_k_std,
     }
 
     # 如有类型字段，给出各类型的“最后一条样本命中率”（保持兼容）以及可选的 type-wise pass@k

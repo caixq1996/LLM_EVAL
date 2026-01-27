@@ -5,7 +5,7 @@ Paper-ready figure generator for VI-CuRL / VI-CURL.
 
 Produces three figures that align with the paper narrative:
   (1) Variance decomposition proxies vs step (σ_g,t^2, V_prob,t, and a combined proxy),
-      using outputs from tools/vf_curl_grad_variance.py (merged JSON).
+      using outputs from tools/vi_curl_plot/vf_curl_grad_variance.py (merged JSON).
   (2) Curriculum schedule + confidence threshold dynamics (β_t, τ_t, conf mean/std),
       parsed from wandb-captured stdout logs (output.log).
   (3) Training stability + performance (e.g., Math500 val acc + grad_norm),
@@ -30,6 +30,26 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
+
+# Import shared plot configuration
+try:
+    from plot_config import (
+        setup_plot_style,
+        add_font_size_args,
+        add_replot_args,
+        get_font_sizes,
+        FONT_FAMILY,
+    )
+    HAS_PLOT_CONFIG = True
+except ImportError:
+    HAS_PLOT_CONFIG = False
+    FONT_FAMILY = 'Times New Roman'
+    def setup_plot_style():
+        plt.rcParams['font.family'] = FONT_FAMILY
+        plt.rcParams['font.serif'] = ['Times New Roman', 'DejaVu Serif', 'serif']
+        plt.rcParams['pdf.fonttype'] = 42
+        plt.rcParams['ps.fonttype'] = 42
+        plt.rcParams['mathtext.fontset'] = 'stix'
 
 try:
     import seaborn as sns
@@ -269,19 +289,18 @@ def plot_fig1_variance(
         color="tab:purple",
         label=r"$\Delta\%$ variance proxy",
     )
-    ax.set_xlabel("training global_step")
-    ax.set_ylabel(r"$\Delta\%$ vs baseline (full)")
+    ax.set_xlabel("training global_step", fontfamily=FONT_FAMILY)
+    ax.set_ylabel(r"$\Delta\%$ vs baseline (full)", fontfamily=FONT_FAMILY)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
     ax.grid(True, alpha=0.3)
-    ax.legend(loc="best", ncol=3, fontsize=9)
+    ax.legend(loc="best", ncol=3, prop={'family': FONT_FAMILY})
 
     ax2 = ax.twinx()
     ax2.plot(steps, beta, color="tab:blue", linestyle="--", linewidth=1.5, alpha=0.5)
-    ax2.set_ylabel(r"$\beta$")
+    ax2.set_ylabel(r"$\beta$", fontfamily=FONT_FAMILY)
     ax2.set_ylim(0.0, 1.05)
 
-    title = str(payload.get("title") or "VI-CuRL variance proxies")
-    ax.set_title(title)
+    # Title removed for publication
     fig.tight_layout()
     _savefig(fig, out_path_base, dpi=dpi)
 
@@ -322,10 +341,10 @@ def plot_fig2_schedule(
     ax0.plot(steps, beta_t, linewidth=2.0, label=r"$\beta_t$ (target)")
     if not np.all(np.isnan(beta_a)):
         ax0.plot(steps, beta_a, linewidth=2.0, linestyle="--", label=r"$\beta_t$ (actual)")
-    ax0.set_ylabel(r"retention $\beta$")
+    ax0.set_ylabel(r"retention $\beta$", fontfamily=FONT_FAMILY)
     ax0.set_ylim(0.0, 1.05)
     ax0.grid(True, alpha=0.3)
-    ax0.legend(loc="best")
+    ax0.legend(loc="best", prop={'family': FONT_FAMILY})
 
     ax1 = axes[1]
     if not np.all(np.isnan(conf_m)):
@@ -334,12 +353,12 @@ def plot_fig2_schedule(
         ax1.fill_between(steps, conf_m - conf_s, conf_m + conf_s, alpha=0.2, linewidth=0.0, label="conf ± std")
     if not np.all(np.isnan(tau)):
         ax1.plot(steps, tau, linewidth=2.0, linestyle="--", label=r"threshold $\tau_t$")
-    ax1.set_xlabel("training global_step")
-    ax1.set_ylabel("confidence / threshold")
+    ax1.set_xlabel("training global_step", fontfamily=FONT_FAMILY)
+    ax1.set_ylabel("confidence / threshold", fontfamily=FONT_FAMILY)
     ax1.grid(True, alpha=0.3)
-    ax1.legend(loc="best")
+    ax1.legend(loc="best", prop={'family': FONT_FAMILY})
 
-    fig.suptitle(f"Curriculum dynamics: {curl_run_dir.name}", y=0.98)
+    # Title removed for publication
     fig.tight_layout(rect=[0, 0.02, 1, 0.96])
     _savefig(fig, out_path_base, dpi=dpi)
 
@@ -384,23 +403,23 @@ def plot_fig3_stability_and_perf(
         ax0.plot(steps_c_acc, 100.0 * acc_c, marker="o", linewidth=2.0, label=f"VI-CuRL (curl)  {curl_run_dir.name}")
     if steps_n_acc.size:
         ax0.plot(steps_n_acc, 100.0 * acc_n, marker="o", linewidth=2.0, linestyle="--", label=f"No-curriculum (nocurl)  {nocurl_run_dir.name}")
-    ax0.set_ylabel(f"{dataset} val acc@1 (%)")
+    ax0.set_ylabel(f"{dataset} val acc@1 (%)", fontfamily=FONT_FAMILY)
     ax0.yaxis.set_major_locator(MaxNLocator(nbins=6))
     ax0.grid(True, alpha=0.3)
-    ax0.legend(loc="best", fontsize=9)
+    ax0.legend(loc="best", prop={'family': FONT_FAMILY})
 
     ax1 = axes[1]
     if steps_c_gn.size:
         ax1.plot(steps_c_gn, gn_c, linewidth=2.0, label="curl (EMA grad_norm)")
     if steps_n_gn.size:
         ax1.plot(steps_n_gn, gn_n, linewidth=2.0, linestyle="--", label="nocurl (EMA grad_norm)")
-    ax1.set_xlabel("training global_step")
-    ax1.set_ylabel("actor/grad_norm (EMA)")
+    ax1.set_xlabel("training global_step", fontfamily=FONT_FAMILY)
+    ax1.set_ylabel("actor/grad_norm (EMA)", fontfamily=FONT_FAMILY)
     ax1.set_yscale("log")
     ax1.grid(True, which="both", alpha=0.3)
-    ax1.legend(loc="best")
+    ax1.legend(loc="best", prop={'family': FONT_FAMILY})
 
-    fig.suptitle("Stability + performance (same base model / reward)", y=0.98)
+    # Title removed for publication
     fig.tight_layout(rect=[0, 0.02, 1, 0.96])
     _savefig(fig, out_path_base, dpi=dpi)
 
@@ -437,11 +456,39 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--dataset", type=str, default="math500", help="Dataset name for val-core/<dataset>/acc/mean@1")
     ap.add_argument("--save_dir", type=Path, default=None, help="Where to save figures (default: <vf_out_dir>/paper_figs/<run_name>)")
     ap.add_argument("--dpi", type=int, default=250)
+    
+    # Font size arguments
+    if HAS_PLOT_CONFIG:
+        add_font_size_args(ap)
+        add_replot_args(ap)
+    else:
+        ap.add_argument('--fontsize_xlabel', type=int, default=14)
+        ap.add_argument('--fontsize_ylabel', type=int, default=14)
+        ap.add_argument('--fontsize_legend', type=int, default=12)
+        ap.add_argument('--fontsize_tick', type=int, default=12)
+        ap.add_argument('--fontsize_xtick', type=int, default=12)
+        ap.add_argument('--fontsize_ytick', type=int, default=12)
+        ap.add_argument('--fontsize_colorbar', type=int, default=12)
+        ap.add_argument('--replot', action='store_true', default=False,
+                        help='Regenerate plots from existing cached data')
+        ap.add_argument('--data_cache_path', type=str, default=None)
+    
     return ap.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    setup_plot_style()
+    font_sizes = get_font_sizes(args)
+    plt.rcParams.update(
+        {
+            "font.size": font_sizes["tick"],
+            "axes.labelsize": font_sizes["xlabel"],
+            "legend.fontsize": font_sizes["legend"],
+            "xtick.labelsize": font_sizes["xtick"],
+            "ytick.labelsize": font_sizes["ytick"],
+        }
+    )
     curl_run_dir = args.curl_run_dir.expanduser()
     nocurl_run_dir = args.nocurl_run_dir.expanduser()
 
