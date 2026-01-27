@@ -18,7 +18,7 @@ SUBMIT_DIR="${PBS_O_WORKDIR:-$PWD}"
 
 RUN_EVAL_SUBMIT="${RUN_EVAL_SUBMIT:-0}"
 RUN_EVAL_MULTI_SUBMIT="${RUN_EVAL_MULTI_SUBMIT:-0}"
-EVAL_STEP_FILTER="${EVAL_STEP_FILTER:-100-313:100}"
+EVAL_STEP_FILTER="${EVAL_STEP_FILTER:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --submit)
@@ -243,6 +243,47 @@ export CUDA_VISIBLE_DEVICES="0"
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export PYTHONUNBUFFERED=1
 export VLLM_USE_FLASHINFER_SAMPLER=1
+EVAL_FAIL_FAST="${EVAL_FAIL_FAST:-1}"
+VLLM_GPU_MEMORY_UTILIZATION="\${VLLM_GPU_MEMORY_UTILIZATION:-0.85}"
+VLLM_GPU_WAIT_TIMEOUT="\${VLLM_GPU_WAIT_TIMEOUT:-600}"
+VLLM_GPU_WAIT_INTERVAL="\${VLLM_GPU_WAIT_INTERVAL:-30}"
+VLLM_MIN_FREE_GB="\${VLLM_MIN_FREE_GB:-20}"
+VLLM_MIN_FREE_RATIO="\${VLLM_MIN_FREE_RATIO:-0.20}"
+if command -v nvidia-smi >/dev/null 2>&1; then
+  start_ts=\$(date +%s)
+  while true; do
+    smi_out=\$(nvidia-smi --query-gpu=memory.total,memory.free --format=csv,noheader,nounits -i 0 2>/dev/null | head -n1)
+    total=\$(echo "\${smi_out}" | awk -F',' '{gsub(/ /,"",$1); print $1}')
+    free=\$(echo "\${smi_out}" | awk -F',' '{gsub(/ /,"",$2); print $2}')
+    if [[ -n "\${total}" && -n "\${free}" ]]; then
+      free_gb=\$(awk -v f="\${free}" 'BEGIN{printf "%.2f", f/1024}')
+      ratio=\$(awk -v f="\${free}" -v t="\${total}" 'BEGIN{printf "%.4f", f/t}')
+      ok_ratio=\$(awk -v r="\${ratio}" -v minr="\${VLLM_MIN_FREE_RATIO}" 'BEGIN{print (r>=minr)?1:0}')
+      ok_gb=\$(awk -v g="\${free_gb}" -v ming="\${VLLM_MIN_FREE_GB}" 'BEGIN{print (g>=ming)?1:0}')
+      if [[ "\${ok_ratio}" == "1" && "\${ok_gb}" == "1" ]]; then
+        util_max=\$(awk -v r="\${ratio}" 'BEGIN{u=r-0.02; if(u<0.05) u=0.05; if(u>0.95) u=0.95; printf "%.2f", u}')
+        if [[ "\$(awk -v a="\${util_max}" -v b="\${VLLM_GPU_MEMORY_UTILIZATION}" 'BEGIN{print (a<b)?1:0}')" == "1" ]]; then
+          echo "[WARN] Adjusting VLLM_GPU_MEMORY_UTILIZATION from \${VLLM_GPU_MEMORY_UTILIZATION} to \${util_max} (free \${free_gb} GiB, total \${total} MiB)."
+          VLLM_GPU_MEMORY_UTILIZATION="\${util_max}"
+        fi
+        break
+      fi
+      now_ts=\$(date +%s)
+      elapsed=\$((now_ts - start_ts))
+      if (( elapsed >= VLLM_GPU_WAIT_TIMEOUT )); then
+        echo "[ERROR] GPU free memory too low (\${free_gb} GiB free, ratio=\${ratio}). Timeout after \${elapsed}s."
+        exit 1
+      fi
+      echo "[WARN] GPU memory low (\${free_gb} GiB free, ratio=\${ratio}); waiting \${VLLM_GPU_WAIT_INTERVAL}s..."
+      sleep "\${VLLM_GPU_WAIT_INTERVAL}"
+    else
+      echo "[WARN] Unable to query GPU memory via nvidia-smi; skipping preflight check."
+      break
+    fi
+  done
+fi
+export VLLM_GPU_MEMORY_UTILIZATION
+export EVAL_FAIL_FAST
 export EVAL_ONE_MODEL_TIMEOUT="\${EVAL_ONE_MODEL_TIMEOUT:-21600}"
 export EXPORT_ROOT="${EXPORT_ROOT}"
 export EVAL_DATA_DIR="${EVAL_DATA_DIR}"
