@@ -55,6 +55,16 @@ def _get_mp_chunk_size() -> int:
     return 64
 
 
+def _get_mp_chunk_timeout() -> float:
+    env = os.getenv("EVAL_MP_CHUNK_TIMEOUT", "").strip()
+    if env:
+        try:
+            return max(1.0, float(env))
+        except ValueError:
+            pass
+    return 300.0
+
+
 def _init_worker(thread_workers: int):
     global _EVAL_THREAD_WORKERS
     _EVAL_THREAD_WORKERS = max(1, int(thread_workers))
@@ -231,7 +241,8 @@ def evaluate(data_name, prompt_type, samples=None, file_path=None, max_num_sampl
     thread_workers = _get_thread_workers(mp_workers)
     chunk_size = _get_mp_chunk_size()
     start_method = os.getenv("EVAL_MP_START_METHOD", "").strip() or None
-    print(f"[EVAL] parallel: mp={mp_workers} threads={thread_workers} chunk={chunk_size} start={start_method or 'spawn'}")
+    chunk_timeout = _get_mp_chunk_timeout()
+    print(f"[EVAL] parallel: mp={mp_workers} threads={thread_workers} chunk={chunk_size} start={start_method or 'spawn'} timeout={chunk_timeout}s")
 
     if n_tasks == 0:
         pass
@@ -252,13 +263,46 @@ def evaluate(data_name, prompt_type, samples=None, file_path=None, max_num_sampl
             ctx = mp.get_context(start_method or "spawn")
         except ValueError:
             ctx = mp.get_context()
-        chunks = (params[i:i + chunk_size] for i in range(0, n_tasks, chunk_size))
+        chunks = [params[i:i + chunk_size] for i in range(0, n_tasks, chunk_size)]
         with tqdm(total=n_tasks, desc='Evaluate') as bar:
-            with ctx.Pool(processes=mp_workers, initializer=_init_worker, initargs=(thread_workers,)) as pool:
-                for chunk_res in pool.imap_unordered(_eval_chunk, chunks):
-                    for idx, s in chunk_res:
-                        scores[idx] = s
-                    bar.update(len(chunk_res))
+            remaining = chunks
+            while remaining:
+                timed_out = False
+                try:
+                    with ctx.Pool(processes=mp_workers, initializer=_init_worker, initargs=(thread_workers,)) as pool:
+                        async_results = [pool.apply_async(_eval_chunk, (chunk,)) for chunk in remaining]
+                        for idx_chunk, (chunk, ar) in enumerate(zip(remaining, async_results)):
+                            try:
+                                chunk_res = ar.get(timeout=chunk_timeout)
+                            except mp.TimeoutError:
+                                timed_out = True
+                                # terminate pool and finish remaining chunks serially
+                                pool.terminate()
+                                pool.join()
+                                # include current + rest
+                                remaining = remaining[idx_chunk:]
+                                break
+                        for idx, s in chunk_res:
+                            scores[idx] = s
+                        bar.update(len(chunk_res))
+                    # all chunks completed without timeout
+                    if not timed_out:
+                        remaining = []
+                except Exception:
+                    # fall back to serial if pool fails
+                    timed_out = True
+
+                if timed_out:
+                    remaining_tasks = max(0, n_tasks - int(bar.n))
+                    for chunk in remaining:
+                        chunk_res = _eval_chunk(chunk)
+                        for idx, s in chunk_res:
+                            scores[idx] = s
+                        if remaining_tasks > 0:
+                            step = min(len(chunk_res), remaining_tasks)
+                            bar.update(step)
+                            remaining_tasks -= step
+                    remaining = []
 
     # 回填每题的 score 列表
     idx = 0

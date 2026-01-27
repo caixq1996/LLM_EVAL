@@ -16,9 +16,10 @@ need(){ command -v "$1" &>/dev/null || { echo "missing: $1"; exit 1; }; }
 # Shared defaults (align with run_eval_lora_all.sh where possible)
 # ============================================================
 PROJECT_NAME="${PROJECT_NAME:-OPRA}"
-EXP_NAMES="${EXP_NAMES:-OPRA-LoRA}" # OPRA-LoRA | OPRA-K-ABLATION
+EXP_NAMES="${EXP_NAMES:-OPRA-K-ABLATION}" # OPRA-LoRA | OPRA-K-ABLATION
 MODEL_PATH="${MODEL_PATH:-checkpoints}" # checkpoints | giil
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-128}"
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-32}"
+DEV_TARGET="${DEV_TARGET:-g1}" # auto | g4 | g1 (overrides DEV_JOB_ORDER when set to g4/g1)
 PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
 MAX_TOKENS="${MAX_TOKENS:-3072}"
 EVAL_GROUP1_DATASETS="${EVAL_GROUP1_DATASETS:-aime25x8,amc23x8,aime24x8}"
@@ -46,7 +47,6 @@ DEV_WAIT_START_SEC="${DEV_WAIT_START_SEC:-60}"
 DEV_COOLDOWN_SECONDS="${DEV_COOLDOWN_SECONDS:-30}"
 DEV_MIN_REMAIN_SECONDS="${DEV_MIN_REMAIN_SECONDS:-300}"
 DEV_JOB_ORDER="${DEV_JOB_ORDER:-g4,g1}" # order to try: g4,g1 or g1,g4
-DEV_TARGET="${DEV_TARGET:-g4}" # auto | g4 | g1 (overrides DEV_JOB_ORDER when set to g4/g1)
 
 PROXY="${PROXY:-}"
 
@@ -344,6 +344,8 @@ run_worker() {
 
   export EVAL_GROUP1_DATASETS EVAL_GROUP2_DATASETS EVAL_DATASETS
   export EVAL_MP_START_METHOD=spawn
+  export SYMBOLIC_TIMEOUT_MODE="${SYMBOLIC_TIMEOUT_MODE:-auto}"
+  export SYMBOLIC_TIMEOUT="${SYMBOLIC_TIMEOUT:-1.0}"
 
   local MODEL_ROOT_LOCAL="${MODEL_ROOT:-}"
   if [[ -z "${MODEL_ROOT_LOCAL}" ]]; then

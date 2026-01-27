@@ -13,6 +13,7 @@ from math import isclose
 from typing import Union
 from collections import defaultdict
 import os
+import signal
 
 from sympy import simplify, N
 from sympy.parsing.sympy_parser import parse_expr
@@ -341,6 +342,64 @@ def call_with_timeout(func, *args, timeout=1, **kwargs):
     """
     在独立进程里执行 func(*args, **kwargs, output_queue=...)，超时即杀死子进程并返回 False。
     """
+    if timeout <= 0:
+        try:
+            return bool(func(*args, **kwargs))
+        except Exception:
+            return False
+
+    mode = os.environ.get("SYMBOLIC_TIMEOUT_MODE", "process").strip().lower()
+    if mode in {"signal", "alarm"}:
+        def _alarm_handler(signum, frame):
+            raise TimeoutError()
+        old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+        try:
+            signal.setitimer(signal.ITIMER_REAL, timeout)
+            q = multiprocessing.Queue()
+            kw = dict(kwargs)
+            kw["output_queue"] = q
+            ret = func(*args, **kw)
+            if ret is not None:
+                return bool(ret)
+            try:
+                return bool(q.get_nowait())
+            except Exception:
+                return False
+        except TimeoutError:
+            return False
+        except Exception:
+            return False
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, old_handler)
+    if mode == "auto":
+        try:
+            if multiprocessing.current_process().daemon:
+                def _alarm_handler(signum, frame):
+                    raise TimeoutError()
+                old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+                try:
+                    signal.setitimer(signal.ITIMER_REAL, timeout)
+                    q = multiprocessing.Queue()
+                    kw = dict(kwargs)
+                    kw["output_queue"] = q
+                    ret = func(*args, **kw)
+                    if ret is not None:
+                        return bool(ret)
+                    try:
+                        return bool(q.get_nowait())
+                    except Exception:
+                        return False
+                except TimeoutError:
+                    return False
+                except Exception:
+                    return False
+                finally:
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+                    signal.signal(signal.SIGALRM, old_handler)
+        except Exception:
+            pass
+
     output_queue = multiprocessing.Queue()
     def _target(q, *a, **kw):
         try:
