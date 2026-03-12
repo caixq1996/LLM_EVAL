@@ -384,15 +384,26 @@ def _append_jsonl(samples: List[dict], save_path: Path) -> None:
             f.write(json.dumps(sample, ensure_ascii=False) + "\n")
 
 
-def _get_gen_chunk_size() -> int:
+def _get_gen_chunk_size(n_sampling: Optional[int] = None) -> int:
     val = os.getenv("EVAL_GEN_CHUNK_SIZE")
-    if val is None or str(val).strip() == "":
-        return 64
-    try:
-        size = int(val)
-        return max(1, size)
-    except ValueError:
-        return 64
+    if val is not None and str(val).strip() != "":
+        try:
+            return max(1, int(val))
+        except ValueError:
+            return 64
+
+    # Auto mode: keep per-generate call workload bounded when n_sampling is large.
+    # This improves checkpoint cadence and avoids very long single chunks for pass@1024.
+    if n_sampling is not None and n_sampling > 0:
+        target_val = os.getenv("EVAL_GEN_TARGET_OUTPUTS", "8192")
+        try:
+            target_outputs = max(1024, int(target_val))
+        except ValueError:
+            target_outputs = 8192
+        auto_chunk = max(1, target_outputs // n_sampling)
+        return min(64, auto_chunk)
+
+    return 64
 
 def is_evaluation_complete(out_dir: Path) -> bool:
     metrics_files = list(out_dir.glob('*_metrics.json'))
@@ -503,12 +514,7 @@ def evaluate_adapters(
             safe_run_name = adapter.run_name.replace('.', '_').replace('-', '_')
             run_tag = f"{adapter.run_name}__{adapter.step_name}"
             out_dir = out_root / safe_run_name / run_tag / f"g{group_idx}" / data_name
-            
-            if is_evaluation_complete(out_dir):
-                print(f'[{_now()}] [SKIP] {adapter.name} on {data_name} - already complete')
-                continue
-            
-            print(f'[{_now()}] Evaluating {adapter.name} on {data_name}')
+
             out_dir.mkdir(parents=True, exist_ok=True)
             out_file_prefix = f'{split}_{prompt_type}_{num_test_sample}_seed0_t{temperature}'
             shard_suffix = f'_part{shard_id}' if num_shards > 1 else ''
@@ -525,44 +531,95 @@ def evaluate_adapters(
                 dedup_samples.append(sample)
             existing_samples = dedup_samples
 
-            missing_prompts = [p for p in prompts if p.get("idx") not in seen_idx]
-            if missing_prompts:
-                chunk_size = _get_gen_chunk_size()
-                print(f'[{_now()}] Resume: {len(existing_samples)} existing, {len(missing_prompts)} missing (chunk={chunk_size})')
-                for start in range(0, len(missing_prompts), chunk_size):
-                    chunk_prompts = missing_prompts[start:start + chunk_size]
-                    chunk_prompt_strs = [p['prompt'] for p in chunk_prompts]
-                    outputs = llm.generate(
-                        chunk_prompt_strs,
-                        sampling_params,
-                        lora_request=lora_requests[adapter.name],
+            def _get_sample_n(sample):
+                if not isinstance(sample, dict):
+                    return 0
+                for key in ("code", "pred", "score"):
+                    val = sample.get(key)
+                    if isinstance(val, list):
+                        return len(val)
+                return 0
+
+            def _ensure_sample(prompt_item, sample):
+                if sample is None:
+                    sample = dict(prompt_item)
+                    sample.pop('prompt', None)
+                if 'prompt' in sample:
+                    sample.pop('prompt', None)
+                if sample.get('idx') is None:
+                    sample['idx'] = prompt_item.get('idx')
+                for k in ('question', 'gt', 'gt_cot', 'type'):
+                    if k not in sample and k in prompt_item:
+                        sample[k] = prompt_item[k]
+                for k in ('code', 'pred', 'report'):
+                    if not isinstance(sample.get(k), list):
+                        sample[k] = []
+                return sample
+
+            samples_map = {s.get("idx"): s for s in existing_samples if s.get("idx") is not None}
+            missing_groups = {}
+            for p in prompts:
+                idx_val = p.get("idx")
+                if idx_val is None:
+                    continue
+                sample = samples_map.get(idx_val)
+                cur_n = _get_sample_n(sample)
+                if cur_n < n_sampling:
+                    missing_groups.setdefault(n_sampling - cur_n, []).append(p)
+
+            if not missing_groups and is_evaluation_complete(out_dir):
+                print(f'[{_now()}] [SKIP] {adapter.name} on {data_name} - already complete')
+                continue
+
+            print(f'[{_now()}] Evaluating {adapter.name} on {data_name}')
+
+            if missing_groups:
+                from utils import save_jsonl
+                chunk_size = _get_gen_chunk_size(n_sampling)
+                total_missing = sum(len(v) for v in missing_groups.values())
+                print(f'[{_now()}] Resume: {len(existing_samples)} existing, {total_missing} missing/partial (chunk={chunk_size})')
+                for need_n in sorted(missing_groups.keys()):
+                    if need_n <= 0:
+                        continue
+                    group_prompts = missing_groups[need_n]
+                    group_chunk_size = _get_gen_chunk_size(need_n)
+                    group_params = SamplingParams(
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        stop=stop_words,
+                        n=need_n,
                     )
+                    for start in range(0, len(group_prompts), group_chunk_size):
+                        chunk_prompts = group_prompts[start:start + group_chunk_size]
+                        chunk_prompt_strs = [p['prompt'] for p in chunk_prompts]
+                        outputs = llm.generate(
+                            chunk_prompt_strs,
+                            group_params,
+                            lora_request=lora_requests[adapter.name],
+                        )
 
-                    new_samples = []
-                    for i, res in enumerate(outputs):
-                        codes = [out.text for out in res.outputs]
-                        results = [run_execute(executor, code, prompt_type, data_name) for code in codes]
-                        preds = [item[0] for item in results]
-                        reports = [item[1] for item in results]
-                        for j in range(len(preds)):
-                            pred_val = preds[j]
-                            gt_val = chunk_prompts[i].get('gt')
-                            if gt_val in ['A', 'B', 'C', 'D', 'E'] and pred_val not in ['A', 'B', 'C', 'D', 'E']:
-                                preds[j] = choice_answer_clean(codes[j])
-                            elif _is_multi_choice(gt_val) and not _is_multi_choice(pred_val):
-                                preds[j] = ''.join([c for c in str(pred_val) if c in ['A', 'B', 'C', 'D', 'E']])
-                        sample = dict(chunk_prompts[i])
-                        sample.pop('prompt', None)
-                        sample.update({
-                            'code': codes,
-                            'pred': preds,
-                            'report': reports,
-                        })
-                        new_samples.append(sample)
+                        for i, res in enumerate(outputs):
+                            codes = [out.text for out in res.outputs]
+                            results = [run_execute(executor, code, prompt_type, data_name) for code in codes]
+                            preds = [item[0] for item in results]
+                            reports = [item[1] for item in results]
+                            for j in range(len(preds)):
+                                pred_val = preds[j]
+                                gt_val = chunk_prompts[i].get('gt')
+                                if gt_val in ['A', 'B', 'C', 'D', 'E'] and pred_val not in ['A', 'B', 'C', 'D', 'E']:
+                                    preds[j] = choice_answer_clean(codes[j])
+                                elif _is_multi_choice(gt_val) and not _is_multi_choice(pred_val):
+                                    preds[j] = ''.join([c for c in str(pred_val) if c in ['A', 'B', 'C', 'D', 'E']])
+                            idx_val = chunk_prompts[i].get("idx")
+                            sample = _ensure_sample(chunk_prompts[i], samples_map.get(idx_val))
+                            sample['code'].extend(codes)
+                            sample['pred'].extend(preds)
+                            sample['report'].extend(reports)
+                            samples_map[idx_val] = sample
 
-                    _append_jsonl(new_samples, out_file)
-                    existing_samples.extend(new_samples)
-                    print(f'[{_now()}] Saved {len(new_samples)} samples (partial) to {out_file}')
+                        existing_samples = sorted(samples_map.values(), key=lambda s: s.get('idx', 0))
+                        save_jsonl(existing_samples, str(out_file))
+                        print(f'[{_now()}] Saved {len(existing_samples)} samples (partial) to {out_file}')
             else:
                 print(f'[{_now()}] Resume: all samples already in {out_file}')
 
@@ -649,6 +706,9 @@ def main():
     )
     
     print(f'[{_now()}] All evaluations complete')
+    if os.environ.get("FORCE_EXIT_AFTER_EVAL", "").strip() == "1":
+        # Ensure the shard process exits promptly after finishing evaluation.
+        os._exit(0)
 
 if __name__ == '__main__':
     main()

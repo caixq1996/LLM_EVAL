@@ -8,6 +8,7 @@ import itertools
 import numpy as np
 from typing import List, Optional, Tuple, Iterable
 from pathlib import Path
+from contextlib import contextmanager
 
 _STD_ROLL_MIN = 0.1
 _STD_ROLL_MAX = 1.5
@@ -19,7 +20,6 @@ EVAL_ROOT = THIS_FILE.parent.parent
 sys.path.insert(0, str(EVAL_ROOT))
 
 # 导入必要的函数
-from evaluate import evaluate, _compute_pass_at_k
 from evaluate import evaluate, _compute_pass_at_k
 from utils import load_jsonl, save_jsonl
 
@@ -119,6 +119,44 @@ def _compute_sample_std_fields(
     return acc_std, total_std, pass_at_k_std or None
 
 
+def _get_pass_at_ks(max_len: int) -> List[int]:
+    default_ks = [1, 2, 8, 16, 32, 64, 128, 256, 512, 1024]
+    ks_env = os.environ.get('PASS_AT_KS', '')
+    ks: List[int] = []
+    if ks_env.strip():
+        ks = [int(x) for x in ks_env.replace(' ', '').split(',') if x.strip().isdigit()]
+    if ks:
+        ks = sorted(set(ks) | set(default_ks))
+    else:
+        ks = default_ks
+    if max_len > 0:
+        ks = [k for k in ks if k <= max_len]
+    ks = [k for k in ks if k > 0]
+    return ks
+
+
+def _ensure_pass_at_ks_env(max_len: int = 0) -> List[int]:
+    ks = _get_pass_at_ks(max_len)
+    os.environ['PASS_AT_KS'] = ",".join(str(k) for k in ks)
+    return ks
+
+
+@contextmanager
+def _force_serial_evaluate_env():
+    keys = ("EVAL_MP_WORKERS", "EVAL_THREAD_WORKERS")
+    old_env = {key: os.environ.get(key) for key in keys}
+    os.environ["EVAL_MP_WORKERS"] = "1"
+    os.environ["EVAL_THREAD_WORKERS"] = "1"
+    try:
+        yield
+    finally:
+        for key, value in old_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def fast_compute_metrics(samples):
     """
     直接从 samples 的 'score' 字段计算指标，跳过 math_equal 判题过程。
@@ -162,12 +200,7 @@ def fast_compute_metrics(samples):
     total_acc = float(np.mean(all_flat_scores) * 100) if all_flat_scores.size > 0 else 0.0
 
     # Pass@k
-    ks_env = os.environ.get('PASS_AT_KS', '')
-    if ks_env.strip():
-        ks = [int(x) for x in ks_env.replace(' ', '').split(',') if x.strip().isdigit()]
-    else:
-        ks = [1, 8]
-    ks = sorted({k for k in ks if k > 0 and (max_len == 0 or k <= max_len)})
+    ks = _ensure_pass_at_ks_env(max_len)
     
     pass_at_k_percent, pass_at_k_valid_counts = _compute_pass_at_k(padded_score_mat, ks)
     
@@ -193,7 +226,7 @@ def fast_compute_metrics(samples):
     
     return result_json
 
-def merge_shard_files(out_root, run_name, prompt_type):
+def merge_shard_files(out_root, run_name, prompt_type, fast_mode: bool = False, recover_missing_scores: bool = False):
     run_dir = Path(out_root) / run_name
     if not run_dir.exists():
         print(f'[Merge] Run directory not found: {run_dir}')
@@ -251,39 +284,52 @@ def merge_shard_files(out_root, run_name, prompt_type):
             try:
                 print('  - Calculating metrics...')
                 
-                # 检查是否包含 score 字段
-                if all_samples and 'score' in all_samples[0]:
+                missing_score_count = sum(1 for sample in all_samples if 'score' not in sample)
+                has_complete_scores = bool(all_samples) and missing_score_count == 0
+
+                if has_complete_scores:
                     print("  - [Fast Mode] Using pre-computed scores.")
                     result_json = fast_compute_metrics(all_samples)
                     # 补充 time_use (可选，这里设为0或不写)
-                    result_json['time_use_in_second'] = 0 
+                    result_json['time_use_in_second'] = 0
                 else:
-                    print("  - [Slow Mode] Re-evaluating predictions (scores not found).")
-                    evaluated_samples, result_json = evaluate(
-                        data_name=data_name, 
-                        prompt_type=prompt_type, 
-                        samples=all_samples, 
-                        execute=True
-                    )
-                    
-                    # Calculate STD for Slow Mode results
-                    try:
-                        score_mat = [s.get('score', []) for s in evaluated_samples]
-                        pk = result_json.get("pass_at_k_percent") or {}
-                        ks = list(pk.keys())
-                        acc_std, total_std, pass_std = _compute_sample_std_fields(
-                            score_mat, ks, decimals=1
-                        )
-                        result_json['acc_std'] = acc_std
-                        result_json['total_acc_std'] = total_std
-                        result_json['pass_at_k_std'] = pass_std
-                    except Exception as e:
-                        print(f"  - [WARN] STD calculation failed in Slow Mode: {e}")
+                    should_recover_scores = recover_missing_scores and bool(all_samples)
+                    if fast_mode and not should_recover_scores:
+                        print(f"  - [Fast Mode] Skipping evaluation ({missing_score_count}/{len(all_samples)} samples missing scores).")
+                        result_json = None
+                    else:
+                        recovery_tag = "Score Recovery" if should_recover_scores else "Slow Mode"
+                        print(f"  - [{recovery_tag}] Re-evaluating predictions ({missing_score_count}/{len(all_samples)} samples missing scores).")
+                        _ensure_pass_at_ks_env()
+                        with _force_serial_evaluate_env():
+                            evaluated_samples, result_json = evaluate(
+                                data_name=data_name, 
+                                prompt_type=prompt_type, 
+                                samples=all_samples, 
+                                execute=True
+                            )
+                        all_samples = evaluated_samples
+                        save_jsonl(all_samples, final_out_file)
+                        
+                        # Calculate STD for Slow Mode results
+                        try:
+                            score_mat = [s.get('score', []) for s in evaluated_samples]
+                            pk = result_json.get("pass_at_k_percent") or {}
+                            ks = list(pk.keys())
+                            acc_std, total_std, pass_std = _compute_sample_std_fields(
+                                score_mat, ks, decimals=1
+                            )
+                            result_json['acc_std'] = acc_std
+                            result_json['total_acc_std'] = total_std
+                            result_json['pass_at_k_std'] = pass_std
+                        except Exception as e:
+                            print(f"  - [WARN] STD calculation failed in Slow Mode: {e}")
 
-                metrics_file = final_out_file.with_name(final_out_file.stem + f'_{prompt_type}_metrics.json')
-                with open(metrics_file, 'w') as f:
-                    json.dump(result_json, f, indent=4)
-                print(f'  - Saved metrics: {metrics_file}')
+                if result_json is not None:
+                    metrics_file = final_out_file.with_name(final_out_file.stem + f'_{prompt_type}_metrics.json')
+                    with open(metrics_file, 'w') as f:
+                        json.dump(result_json, f, indent=4)
+                    print(f'  - Saved metrics: {metrics_file}')
                 
                 # 删除分片文件
                 if part_files:
@@ -304,6 +350,8 @@ if __name__ == '__main__':
     parser.add_argument('--out_root', type=str, required=True)
     parser.add_argument('--run_name', type=str, required=True)
     parser.add_argument('--prompt_type', type=str, default='qwen25-math-cot')
+    parser.add_argument('--fast_mode', action='store_true',
+                        help='Only merge and compute metrics from precomputed scores; skip evaluation if scores are missing.')
     args = parser.parse_args()
     
-    merge_shard_files(args.out_root, args.run_name, args.prompt_type)
+    merge_shard_files(args.out_root, args.run_name, args.prompt_type, fast_mode=args.fast_mode)

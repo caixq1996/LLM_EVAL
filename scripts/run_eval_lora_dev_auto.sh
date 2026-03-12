@@ -16,17 +16,29 @@ need(){ command -v "$1" &>/dev/null || { echo "missing: $1"; exit 1; }; }
 # Shared defaults (align with run_eval_lora_all.sh where possible)
 # ============================================================
 PROJECT_NAME="${PROJECT_NAME:-OPRA}"
-EXP_NAMES="${EXP_NAMES:-OPRA-K-ABLATION}" # OPRA-LoRA | OPRA-K-ABLATION
+EXP_NAMES="${EXP_NAMES:-OPRA-LoRA}" # OPRA-LoRA | OPRA-K-ABLATION
 MODEL_PATH="${MODEL_PATH:-checkpoints}" # checkpoints | giil
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-32}"
-DEV_TARGET="${DEV_TARGET:-g1}" # auto | g4 | g1 (overrides DEV_JOB_ORDER when set to g4/g1)
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-128}"
+DEV_TARGET="${DEV_TARGET:-g4}" # auto | g4 | g1 (overrides DEV_JOB_ORDER when set to g4/g1)
 PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
 MAX_TOKENS="${MAX_TOKENS:-3072}"
 EVAL_GROUP1_DATASETS="${EVAL_GROUP1_DATASETS:-aime25x8,amc23x8,aime24x8}"
 EVAL_GROUP2_DATASETS="${EVAL_GROUP2_DATASETS:-minerva_math,olympiadbench,math500}"
 DEFAULT_EVAL_DATASETS="${EVAL_GROUP1_DATASETS},${EVAL_GROUP2_DATASETS}"
 EVAL_DATASETS="${EVAL_DATASETS:-${DEFAULT_EVAL_DATASETS}}"
+SYMBOLIC_TIMEOUT_MODE="${SYMBOLIC_TIMEOUT_MODE:-auto}"
+SYMBOLIC_TIMEOUT="${SYMBOLIC_TIMEOUT:-1.0}"
+EVAL_ITEM_TIMEOUT="${EVAL_ITEM_TIMEOUT:-5}"
 EVAL_STEPS="${EVAL_STEPS:-100,200,300,313}"
+OPRA_K_FILTERS="${OPRA_K_FILTERS:-"Qwen2.5-math-1.5B:k1;Llama-3.2-3B-Instruct:k1;DeepSeek-R1-Distill-Qwen-1.5B:k1"}" # e.g. "Qwen2.5-math-1.5B:k0,k8;Llama-3.2-3B-Instruct:k0"
+EVAL_NON_OPRA_MAX_STEP_ONLY="${EVAL_NON_OPRA_MAX_STEP_ONLY:-1}"
+EVAL_MP_MAX_TOTAL="${EVAL_MP_MAX_TOTAL:-64}"
+EVAL_ALGO_BLACKLIST="${EVAL_ALGO_BLACKLIST:-qlora,qpissa}"
+EVAL_BASE_FT_ONLY="${EVAL_BASE_FT_ONLY:-0}"
+FULL_FT_ROOT="${FULL_FT_ROOT:-/data/giil/caixq/ckpts/VI-CURL_deepscaler_diff}"
+FULL_FT_PREFIX="${FULL_FT_PREFIX:-ver_rule_grpo_nocurl_}"
+FULL_FT_OUT_ROOT="${FULL_FT_OUT_ROOT:-}"
+FULL_FT_MODEL_FILTER="${FULL_FT_MODEL_FILTER:-}"
 
 # Base model lookup paths (same as run_eval_lora_all.sh)
 BASE_MODEL_ROOTS=(
@@ -87,6 +99,79 @@ step_in_filter() {
   fi
   for a in "${allowed[@]}"; do
     if [[ "$step_num" == "$a" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+algo_in_blacklist() {
+  local algo="${1,,}"
+  local list="${EVAL_ALGO_BLACKLIST:-}"
+  if [[ -z "$list" ]]; then
+    return 1
+  fi
+  local item
+  IFS=',' read -ra _items <<< "$list"
+  for item in "${_items[@]}"; do
+    item="${item//[[:space:]]/}"
+    [[ -z "$item" ]] && continue
+    if [[ "$algo" == *"${item,,}"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+parse_opra_k_filters() {
+  local spec="$1"
+  if [[ -z "$spec" ]]; then
+    return 0
+  fi
+  IFS=';' read -ra pairs <<< "$spec"
+  for pair in "${pairs[@]}"; do
+    pair="${pair//[[:space:]]/}"
+    [[ -z "$pair" ]] && continue
+    local model="${pair%%:*}"
+    local ks="${pair#*:}"
+    if [[ -z "$model" || "$ks" == "$pair" ]]; then
+      log "[WARN] Invalid OPRA_K_FILTERS entry (expect Model:k0,k1): $pair"
+      continue
+    fi
+    local -a k_list=()
+    IFS=',' read -ra tokens <<< "$ks"
+    for t in "${tokens[@]}"; do
+      t="${t//[^0-9]/}"
+      if [[ -n "$t" ]]; then
+        k_list+=("$t")
+      fi
+    done
+    if [[ ${#k_list[@]} -eq 0 ]]; then
+      log "[WARN] OPRA_K_FILTERS entry has no valid k values: $pair"
+      continue
+    fi
+    local uniq=()
+    local seen=""
+    local k
+    for k in "${k_list[@]}"; do
+      if [[ " $seen " != *" $k "* ]]; then
+        uniq+=("$k")
+        seen+=" $k"
+      fi
+    done
+    OPRA_K_FILTERS_MAP["$model"]="$(printf '%s ' "${uniq[@]}")"
+  done
+}
+
+k_in_filter() {
+  local k_val="$1"
+  local -a allowed=($2)
+  if [[ ${#allowed[@]} -eq 0 ]]; then
+    return 0
+  fi
+  local a
+  for a in "${allowed[@]}"; do
+    if [[ "$k_val" == "$a" ]]; then
       return 0
     fi
   done
@@ -174,6 +259,11 @@ check_group_complete() {
   EVAL_DATASETS="${EVAL_DATASETS}" \
   EVAL_GROUP1_DATASETS="${EVAL_GROUP1_DATASETS}" \
   EVAL_GROUP2_DATASETS="${EVAL_GROUP2_DATASETS}" \
+  NSAMP_G1="${NSAMP_G1:-}" \
+  NSAMP_G2="${NSAMP_G2:-}" \
+  MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-}" \
+  EVAL_NUM_TEST_SAMPLE="${EVAL_NUM_TEST_SAMPLE:-}" \
+  EVAL_DATA_DIR="${EVAL_DATA_DIR:-}" \
   OUT_ROOT="${OUT_ROOT}" \
   ${PYTHON_BIN} - <<'PY'
 from pathlib import Path
@@ -235,6 +325,146 @@ adapters = [a.strip() for a in os.environ.get("LORA_ADAPTERS", "").split("|") if
 datasets = [d.strip() for d in os.environ.get("EVAL_DATASETS", "").split(",") if d.strip()]
 out_root = Path(os.environ.get("OUT_ROOT", "."))
 
+def _resolve_data_dir(out_root: Path) -> Path:
+    env_dir = os.environ.get("EVAL_DATA_DIR")
+    if env_dir:
+        return Path(env_dir)
+    try:
+        parts = out_root.resolve().parts
+        if "eval_results" in parts:
+            base = Path(*parts[:parts.index("eval_results")])
+            candidate = base / "data"
+            if candidate.exists():
+                return candidate
+    except Exception:
+        pass
+    return Path("./data")
+
+def _count_dataset_samples(data_dir: Path, data_name: str, split: str = "test"):
+    jsonl_path = data_dir / data_name / f"{split}.jsonl"
+    if jsonl_path.exists():
+        try:
+            with jsonl_path.open("r", encoding="utf-8") as f:
+                return sum(1 for line in f if line.strip())
+        except Exception:
+            return None
+    json_path = data_dir / data_name / f"{split}.json"
+    if json_path.exists():
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return len(data)
+        except Exception:
+            return None
+    return None
+
+def _expected_samples(data_name: str, data_dir: Path):
+    raw = os.environ.get("EVAL_NUM_TEST_SAMPLE", "")
+    num = None
+    if raw.strip():
+        try:
+            num = int(raw)
+        except ValueError:
+            num = None
+    if num is not None and num <= 0:
+        num = None
+    ds_count = _count_dataset_samples(data_dir, data_name)
+    if ds_count is None:
+        return num
+    if num is None:
+        return ds_count
+    return min(num, ds_count)
+
+def _parse_int(val):
+    try:
+        return int(val)
+    except Exception:
+        return None
+
+def _target_n_for_dataset(data_name: str):
+    nsamp_g1 = _parse_int(os.environ.get("NSAMP_G1") or os.environ.get("MAX_SAMPLE_NUMS") or "")
+    nsamp_g2 = _parse_int(os.environ.get("NSAMP_G2") or os.environ.get("MAX_SAMPLE_NUMS") or "")
+    g = group_idx(data_name)
+    if g == 1:
+        return nsamp_g1
+    if g == 2:
+        return nsamp_g2
+    return nsamp_g1 or nsamp_g2
+
+def _iter_jsonl_files(out_dir: Path):
+    files = sorted(out_dir.glob("*.jsonl"))
+    if not files:
+        return []
+    non_part = [p for p in files if "_part" not in p.name]
+    return non_part if non_part else files
+
+def _count_jsonl_samples(out_dir: Path) -> int:
+    files = _iter_jsonl_files(out_dir)
+    if not files:
+        return 0
+    seen = set()
+    count = 0
+    for path in files:
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(obj, dict) and "idx" in obj:
+                        idx = obj.get("idx")
+                        if idx in seen:
+                            continue
+                        seen.add(idx)
+                        count += 1
+                    else:
+                        count += 1
+        except Exception:
+            continue
+    return count
+
+def _min_sample_len(out_dir: Path) -> int:
+    files = _iter_jsonl_files(out_dir)
+    if not files:
+        return 0
+    by_idx = {}
+    for path in files:
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    idx_val = obj.get("idx")
+                    if idx_val is None:
+                        continue
+                    sample_len = 0
+                    for key in ("pred", "code", "score"):
+                        val = obj.get(key)
+                        if isinstance(val, list):
+                            sample_len = len(val)
+                            break
+                    prev = by_idx.get(idx_val, 0)
+                    if sample_len > prev:
+                        by_idx[idx_val] = sample_len
+        except Exception:
+            continue
+    if not by_idx:
+        return 0
+    return min(by_idx.values())
+
+data_dir = _resolve_data_dir(out_root)
+
 missing = []
 total = 0
 for adapter in adapters:
@@ -242,6 +472,18 @@ for adapter in adapters:
     for data_name in datasets:
         total += 1
         out_dir = out_root / safe_run_name / run_tag / f"g{group_idx(data_name)}" / data_name
+        expected = _expected_samples(data_name, data_dir)
+        if expected is not None and expected > 0:
+            have = _count_jsonl_samples(out_dir)
+            if have < expected:
+                missing.append(f"{out_dir} (jsonl {have}/{expected})")
+                continue
+        target_n = _target_n_for_dataset(data_name)
+        if target_n is not None and target_n > 0:
+            min_len = _min_sample_len(out_dir)
+            if min_len < target_n:
+                missing.append(f"{out_dir} (n={min_len}<{target_n})")
+                continue
         metrics_files = [p for p in out_dir.glob("*_metrics.json") if "_part" not in p.name]
         if not metrics_files:
             missing.append(str(out_dir))
@@ -369,6 +611,38 @@ run_worker() {
   NSAMP_G1="${NSAMP_G1:-${MAX_SAMPLE_NUMS}}"
   NSAMP_G2="${NSAMP_G2:-${MAX_SAMPLE_NUMS}}"
 
+  if [[ "${EVAL_BASE_FT_ONLY}" == "1" ]]; then
+    if [[ -z "${FULL_FT_OUT_ROOT}" ]]; then
+      FULL_FT_OUT_ROOT="${REPO_ROOT_LOCAL}/eval_results/VI-CURL_deepscaler_diff_${PROMPT_TYPE}"
+    fi
+    local eval_gpu_count="${EVAL_DEV_GPU_COUNT:-}"
+    if [[ -z "${eval_gpu_count}" && -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+      IFS=',' read -ra _GPU_RAW <<< "${CUDA_VISIBLE_DEVICES}"
+      eval_gpu_count="${#_GPU_RAW[@]}"
+    fi
+    if [[ -z "${eval_gpu_count}" ]]; then
+      eval_gpu_count=1
+    fi
+    log "[INFO] EVAL_BASE_FT_ONLY=1: base model + full finetune last step only"
+    RUN_LORA_EVAL_SUBMITTED=1 \
+      TP_NUM_GPUS="${eval_gpu_count}" \
+      NUM_GPUS="${eval_gpu_count}" \
+      FULL_FT_ROOT="${FULL_FT_ROOT}" \
+      FULL_FT_PREFIX="${FULL_FT_PREFIX}" \
+      FULL_FT_OUT_ROOT="${FULL_FT_OUT_ROOT}" \
+      FULL_FT_MODEL_FILTER="${FULL_FT_MODEL_FILTER}" \
+      OPRA_K_FILTERS="${OPRA_K_FILTERS}" \
+      PROMPT_TYPE="${PROMPT_TYPE}" \
+      MAX_TOKENS="${MAX_TOKENS}" \
+      MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS}" \
+      TEMP_G1="${TEMP_G1}" \
+      TEMP_G2="${TEMP_G2}" \
+      NSAMP_G1="${NSAMP_G1}" \
+      NSAMP_G2="${NSAMP_G2}" \
+      "${EVAL_ALL_SCRIPT}"
+    return $?
+  fi
+
   if [[ -z "${PASS_AT_KS:-}" ]]; then
     local default_pass_ks=(1 8 16 32 64 128 256 512 1024 2048)
     local pass_ks=()
@@ -394,6 +668,18 @@ run_worker() {
     log "[INFO] EVAL_STEPS filter: ${allowed_steps}"
   fi
 
+  local -A OPRA_K_FILTERS_MAP
+  local opra_k_filter_active=0
+  if [[ "${EXP_NAMES}" == "OPRA-K-ABLATION" && -n "${OPRA_K_FILTERS:-}" ]]; then
+    parse_opra_k_filters "${OPRA_K_FILTERS}"
+    if [[ ${#OPRA_K_FILTERS_MAP[@]} -gt 0 ]]; then
+      opra_k_filter_active=1
+      log "[INFO] OPRA_K_FILTERS enabled: ${OPRA_K_FILTERS}"
+    else
+      log "[WARN] OPRA_K_FILTERS set but no valid entries parsed"
+    fi
+  fi
+
   log "[INFO] Discovering LoRA adapters in ${MODEL_ROOT_LOCAL}..."
   local ADAPTER_LIST=()
   while IFS= read -r -d '' adapter_dir; do
@@ -404,6 +690,39 @@ run_worker() {
   if [[ ${#ADAPTER_LIST[@]} -eq 0 ]]; then
     log "[WARN] No LoRA adapters found, exiting"
     return 0
+  fi
+
+  local -A MAX_STEP_BY_TYPE
+  if [[ "${EVAL_NON_OPRA_MAX_STEP_ONLY}" == "1" ]]; then
+    for adapter in "${ADAPTER_LIST[@]}"; do
+      if [[ "$(basename "$adapter")" == *_vllm ]]; then
+        continue
+      fi
+      local adapter_parent adapter_type
+      adapter_parent="$adapter"
+      while [[ "$(basename "$adapter_parent")" == "actor" || "$(basename "$adapter_parent")" =~ ^global_step_ ]]; do
+        adapter_parent="$(dirname "$adapter_parent")"
+      done
+      adapter_type="$(basename "$adapter_parent")"
+      if algo_in_blacklist "$adapter_type"; then
+        continue
+      fi
+      if [[ "${adapter_type,,}" == *opra* ]]; then
+        continue
+      fi
+      if [[ "$adapter" =~ global_step_([0-9]+) ]]; then
+        local step_num
+        step_num="${BASH_REMATCH[1]}"
+        local cur
+        cur="${MAX_STEP_BY_TYPE[$adapter_type]:-}"
+        if [[ -z "$cur" || "$step_num" -gt "$cur" ]]; then
+          MAX_STEP_BY_TYPE["$adapter_type"]="$step_num"
+        fi
+      fi
+    done
+    for t in "${!MAX_STEP_BY_TYPE[@]}"; do
+      log "[INFO] Non-OPRA max step for ${t}: ${MAX_STEP_BY_TYPE[$t]}"
+    done
   fi
 
   declare -A ADAPTER_GROUPS
@@ -420,16 +739,56 @@ run_worker() {
     done
     local adapter_type
     adapter_type="$(basename "$adapter_parent")"
+    if algo_in_blacklist "$adapter_type"; then
+      log "[INFO] Skipping $adapter (blacklisted algo: $adapter_type)"
+      continue
+    fi
+
+    if [[ "${opra_k_filter_active}" == "1" && "${adapter_type}" == *opra* ]]; then
+      local opra_base opra_k allowed_ks
+      opra_base="${adapter_type%%_opra*}"
+      opra_k=""
+      if [[ "$adapter_type" =~ _k([0-9]+) ]]; then
+        opra_k="${BASH_REMATCH[1]}"
+      fi
+      allowed_ks="${OPRA_K_FILTERS_MAP[$opra_base]:-}"
+      if [[ -n "$allowed_ks" ]]; then
+        if [[ -z "$opra_k" ]]; then
+          log "[INFO] Skipping $adapter (cannot parse k for ${opra_base})"
+          continue
+        fi
+        if ! k_in_filter "$opra_k" "$allowed_ks"; then
+          log "[INFO] Skipping $adapter (k${opra_k} not in OPRA_K_FILTERS for ${opra_base})"
+          continue
+        fi
+      fi
+    fi
 
     local step_num
     step_num=""
     if [[ "$adapter" =~ global_step_([0-9]+) ]]; then
       step_num="${BASH_REMATCH[1]}"
     fi
-    if [[ -n "$step_num" ]]; then
-      if ! step_in_filter "$step_num" "$allowed_steps"; then
-        log "[INFO] Skipping $adapter (step $step_num not in EVAL_STEPS)"
-        continue
+    local is_opra
+    is_opra=0
+    if [[ "${adapter_type,,}" == *opra* ]]; then
+      is_opra=1
+    fi
+    if [[ "${EVAL_NON_OPRA_MAX_STEP_ONLY}" == "1" && "$is_opra" -eq 0 ]]; then
+      if [[ -n "$step_num" ]]; then
+        local max_step
+        max_step="${MAX_STEP_BY_TYPE[$adapter_type]:-}"
+        if [[ -n "$max_step" && "$step_num" != "$max_step" ]]; then
+          log "[INFO] Skipping $adapter (non-OPRA step $step_num != max ${max_step})"
+          continue
+        fi
+      fi
+    else
+      if [[ -n "$step_num" ]]; then
+        if ! step_in_filter "$step_num" "$allowed_steps"; then
+          log "[INFO] Skipping $adapter (step $step_num not in EVAL_STEPS)"
+          continue
+        fi
       fi
     fi
 
@@ -583,12 +942,20 @@ PY
     if [[ -z "${total_cpus}" || ! "${total_cpus}" =~ ^[0-9]+$ ]]; then
       total_cpus=1
     fi
+    local max_total="${EVAL_MP_MAX_TOTAL}"
+    if [[ -z "${max_total}" || ! "${max_total}" =~ ^[0-9]+$ ]]; then
+      max_total=64
+    fi
+    if (( total_cpus > max_total )); then
+      total_cpus="${max_total}"
+    fi
     per_shard=$(( total_cpus / LORA_NUM_SHARDS ))
     if (( per_shard < 1 )); then
       per_shard=1
     fi
-    if [[ -z "${EVAL_MP_WORKERS:-}" ]]; then
-      export EVAL_MP_WORKERS="${per_shard}"
+    local max_per_shard="${per_shard}"
+    if [[ -z "${EVAL_MP_WORKERS:-}" || "${EVAL_MP_WORKERS}" -gt "${max_per_shard}" ]]; then
+      export EVAL_MP_WORKERS="${max_per_shard}"
     fi
     if [[ -z "${EVAL_THREAD_WORKERS:-}" ]]; then
       export EVAL_THREAD_WORKERS=1
@@ -605,6 +972,11 @@ PY
 
     log "[INFO] Eval parallelism: nproc=${total_cpus}, shards=${LORA_NUM_SHARDS}, per_shard=${per_shard} -> MP=${EVAL_MP_WORKERS}, THREADS=${EVAL_THREAD_WORKERS}, CHUNK=${EVAL_MP_CHUNK_SIZE}"
     log "[INFO] Running group ${group_key} with shards=${LORA_NUM_SHARDS} (CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}, TP=${TP_NUM_GPUS})"
+
+    if check_group_complete "$adapters"; then
+      log "[INFO] ${group_key} complete (pre-run check)"
+      continue
+    fi
 
     set +e
     local rc
@@ -670,6 +1042,8 @@ PY
       log "[ERROR] Group run failed (rc=${rc})"
       return "$rc"
     fi
+
+    log "[INFO] Merge done, next group"
   done
 
   if [[ "$any_pending" -eq 0 ]]; then
@@ -734,7 +1108,9 @@ run_on_dev() {
 
   local env_prefix=""
   local pass_vars=(PROJECT_NAME EXP_NAMES MODEL_PATH MODEL_ROOT PROMPT_TYPE MAX_TOKENS MAX_SAMPLE_NUMS \
-    EVAL_GROUP1_DATASETS EVAL_GROUP2_DATASETS EVAL_DATASETS EVAL_STEPS \
+    EVAL_GROUP1_DATASETS EVAL_GROUP2_DATASETS EVAL_DATASETS EVAL_NUM_TEST_SAMPLE EVAL_DATA_DIR EVAL_STEPS OPRA_K_FILTERS EVAL_NON_OPRA_MAX_STEP_ONLY EVAL_MP_MAX_TOTAL EVAL_ALGO_BLACKLIST \
+    SYMBOLIC_TIMEOUT_MODE SYMBOLIC_TIMEOUT EVAL_ITEM_TIMEOUT \
+    EVAL_BASE_FT_ONLY FULL_FT_ROOT FULL_FT_PREFIX FULL_FT_OUT_ROOT FULL_FT_MODEL_FILTER \
     REPO_ROOT EVAL_REPO_ROOT LOG_ROOT EVAL_LOG_ROOT WORK_HOME PYTHON_BIN \
     TOKENIZERS_PARALLELISM LORA_NUM_SHARDS FORCE_NUM_GPUS)
   local v

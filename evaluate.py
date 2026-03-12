@@ -3,6 +3,7 @@ import os
 import argparse
 import itertools
 import multiprocessing as mp
+import signal
 import numpy as np
 from math import comb
 from tqdm import tqdm
@@ -65,15 +66,74 @@ def _get_mp_chunk_timeout() -> float:
     return 300.0
 
 
+def _get_pool_maxtasksperchild() -> int:
+    env = os.getenv("EVAL_POOL_MAX_TASKS_PER_CHILD", "").strip()
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            pass
+    return 200
+
+
 def _init_worker(thread_workers: int):
     global _EVAL_THREAD_WORKERS
     _EVAL_THREAD_WORKERS = max(1, int(thread_workers))
 
 
+def _get_item_timeout() -> float:
+    env = os.getenv("EVAL_ITEM_TIMEOUT", "").strip()
+    if env:
+        try:
+            return max(0.0, float(env))
+        except ValueError:
+            pass
+    return 0.0
+
+
 def _eval_task_single(item):
     idx, pred, gt = item
+    timeout = _get_item_timeout()
+    mode = os.getenv("EVAL_ITEM_TIMEOUT_MODE", "").strip().lower()
     try:
-        s = math_equal(pred, gt)
+        if timeout > 0 and mode == "process":
+            # Hard timeout via subprocess to avoid hangs in C-extensions.
+            q = mp.Queue()
+            def _target(q_):
+                try:
+                    q_.put(bool(math_equal(pred, gt)))
+                except Exception:
+                    q_.put(False)
+            p = mp.Process(target=_target, args=(q,), daemon=True)
+            p.start()
+            p.join(timeout)
+            if p.is_alive():
+                p.terminate()
+                p.join(0.2)
+                if p.is_alive():
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
+                    p.join(0.2)
+                s = False
+            else:
+                try:
+                    s = bool(q.get_nowait())
+                except Exception:
+                    s = False
+        elif timeout > 0 and _EVAL_THREAD_WORKERS <= 1:
+            def _alarm_handler(signum, frame):
+                raise TimeoutError()
+            old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+            try:
+                signal.setitimer(signal.ITIMER_REAL, timeout)
+                s = math_equal(pred, gt)
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, old_handler)
+        else:
+            s = math_equal(pred, gt)
     except Exception:
         s = False
     return idx, s
@@ -85,6 +145,11 @@ def _eval_chunk(chunk):
         return [_eval_task_single(item) for item in chunk]
     with ThreadPoolExecutor(max_workers=tw) as ex:
         return list(ex.map(_eval_task_single, chunk))
+
+
+def _eval_chunk_indexed(item):
+    idx, chunk = item
+    return idx, _eval_chunk(chunk)
 
 
 def _estimate_pass_at_k_one(scores, k):
@@ -239,10 +304,14 @@ def evaluate(data_name, prompt_type, samples=None, file_path=None, max_num_sampl
 
     mp_workers = _get_mp_workers()
     thread_workers = _get_thread_workers(mp_workers)
+    if mp_workers > 1 and thread_workers > 1 and not os.getenv("EVAL_ALLOW_THREADS_IN_POOL", "").strip():
+        print(f"[EVAL] Forcing thread_workers=1 to avoid signal issues (was {thread_workers})")
+        thread_workers = 1
     chunk_size = _get_mp_chunk_size()
     start_method = os.getenv("EVAL_MP_START_METHOD", "").strip() or None
     chunk_timeout = _get_mp_chunk_timeout()
-    print(f"[EVAL] parallel: mp={mp_workers} threads={thread_workers} chunk={chunk_size} start={start_method or 'spawn'} timeout={chunk_timeout}s")
+    max_tasks_per_child = _get_pool_maxtasksperchild()
+    print(f"[EVAL] parallel: mp={mp_workers} threads={thread_workers} chunk={chunk_size} start={start_method or 'spawn'} timeout={chunk_timeout}s max_tasks_per_child={max_tasks_per_child}")
 
     if n_tasks == 0:
         pass
@@ -269,25 +338,30 @@ def evaluate(data_name, prompt_type, samples=None, file_path=None, max_num_sampl
             while remaining:
                 timed_out = False
                 try:
-                    with ctx.Pool(processes=mp_workers, initializer=_init_worker, initargs=(thread_workers,)) as pool:
-                        async_results = [pool.apply_async(_eval_chunk, (chunk,)) for chunk in remaining]
-                        for idx_chunk, (chunk, ar) in enumerate(zip(remaining, async_results)):
+                    with ctx.Pool(processes=mp_workers, initializer=_init_worker, initargs=(thread_workers,), maxtasksperchild=max_tasks_per_child) as pool:
+                        indexed = list(enumerate(remaining))
+                        it = pool.imap_unordered(_eval_chunk_indexed, indexed, chunksize=1)
+                        completed = set()
+                        for _ in range(len(indexed)):
                             try:
-                                chunk_res = ar.get(timeout=chunk_timeout)
+                                idx_chunk, chunk_res = it.next(timeout=chunk_timeout)
                             except mp.TimeoutError:
                                 timed_out = True
-                                # terminate pool and finish remaining chunks serially
-                                pool.terminate()
-                                pool.join()
-                                # include current + rest
-                                remaining = remaining[idx_chunk:]
+                                print(f"[EVAL] Chunk timeout after {chunk_timeout}s; fallback to serial for remaining {len(indexed) - len(completed)} chunks")
                                 break
-                        for idx, s in chunk_res:
-                            scores[idx] = s
-                        bar.update(len(chunk_res))
-                    # all chunks completed without timeout
-                    if not timed_out:
-                        remaining = []
+                            completed.add(idx_chunk)
+                            for idx, s in chunk_res:
+                                scores[idx] = s
+                            bar.update(len(chunk_res))
+                        if timed_out:
+                            pool.terminate()
+                            pool.join()
+                            if _get_item_timeout() > 0 and os.getenv("EVAL_ITEM_TIMEOUT_MODE", "").strip().lower() != "process":
+                                os.environ["EVAL_ITEM_TIMEOUT_MODE"] = "process"
+                                print("[EVAL] Switching to process-based item timeout for serial fallback")
+                            remaining = [chunk for i, chunk in indexed if i not in completed]
+                        else:
+                            remaining = []
                 except Exception:
                     # fall back to serial if pool fails
                     timed_out = True

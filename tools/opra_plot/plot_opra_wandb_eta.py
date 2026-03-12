@@ -14,6 +14,7 @@ import os
 import re
 from collections import defaultdict
 from pathlib import Path
+from turtle import color
 from typing import Dict, List, Optional, Tuple
 
 import matplotlib
@@ -27,40 +28,40 @@ from plot_config import setup_plot_style, add_font_size_args, get_font_sizes, ge
 # Algorithm name mapping for legend
 ALGO_NAME_MAP = {
     "vanilla": "LoRA",
-    "opra": "OPRA",
-    "opra_opra": "OPRA-OPRA",
     "adalora": "AdaLoRA",
     "dora": "DoRA",
     "rslora": "RSLoRA",
     "pissa": "PiSSA",
-    "qpissa": "QPiSSA",
-    "qlora": "QLoRA",
+    # "qpissa": "QPiSSA",
+    # "qlora": "QLoRA",
     "olora": "OLoRA",
-    "oft": "OFT",
+    # "oft": "OFT",
+    # "opra": "RCA (Ours)",
+    "opra_opra": "RCA (Ours)",
 }
 
 # Color palette for algorithms
-ALGO_COLORS = {
-    "LoRA": "#1f77b4",
-    "OPRA": "#d62728",
-    "OPRA-OPRA": "#ff7f0e",
-    "AdaLoRA": "#2ca02c",
-    "DoRA": "#9467bd",
-    "RSLoRA": "#8c564b",
-    "PiSSA": "#e377c2",
-    "QPiSSA": "#7f7f7f",
-    "QLoRA": "#bcbd22",
-    "OLoRA": "#17becf",
-    "OFT": "#ff9896",
-}
+# ALGO_COLORS = {
+#     "LoRA": "#1f77b4",
+#     "RCA (Ours)": "#d62728",
+#     # "OPRA-OPRA": "#ff7f0e",
+#     "AdaLoRA": "#2ca02c",
+#     "DoRA": "#9467bd",
+#     "RSLoRA": "#8c564b",
+#     "PiSSA": "#e377c2",
+#     "QPiSSA": "#7f7f7f",
+#     "QLoRA": "#bcbd22",
+#     "OLoRA": "#17becf",
+#     "OFT": "#ff9896",
+# }
 
 PLOT_STYLE_DEFAULTS = {
-    "xlabel": 14,
-    "ylabel": 14,
-    "legend": 12,
+    "xlabel": 24,
+    "ylabel": 24,
+    "legend": 20,
     "tick": 12,
-    "xtick": 12,
-    "ytick": 12,
+    "xtick": 16,
+    "ytick": 16,
     "title": 16,
     "colorbar": 12,
     "show_title": False,
@@ -72,6 +73,8 @@ PLOT_STYLE_DEFAULTS = {
 
 def extract_algo_suffix(exp_name: str) -> str:
     """Extract algorithm suffix from experiment name like 'Qwen2.5-math-1.5B_vanilla'."""
+    if exp_name.endswith("_opra_opra"):
+        return "opra_opra"
     parts = exp_name.rsplit("_", 1)
     if len(parts) == 2:
         return parts[1]
@@ -82,6 +85,20 @@ def get_algo_display_name(exp_name: str) -> str:
     """Get display name for legend."""
     suffix = extract_algo_suffix(exp_name)
     return ALGO_NAME_MAP.get(suffix, suffix)
+
+
+def algo_sort_key(exp_name: str) -> tuple:
+    suffix = extract_algo_suffix(exp_name)
+    if suffix in ALGO_NAME_MAP:
+        return (0, list(ALGO_NAME_MAP.keys()).index(suffix), exp_name)
+    return (1, 999, exp_name)
+
+
+def is_supported_algo(exp_name: str) -> bool:
+    suffix = extract_algo_suffix(exp_name)
+    if suffix == "opra":
+        return False
+    return suffix in ALGO_NAME_MAP
 
 
 def parse_wandb_output_log(log_path: Path) -> List[Dict]:
@@ -180,12 +197,13 @@ def plot_eta_curves(
     """Plot eta curves for all algorithms."""
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    for exp_name, df in sorted(data.items()):
+    for exp_name, df in sorted(data.items(), key=lambda x: algo_sort_key(x[0])):
         if df.empty or metric not in df.columns:
             continue
         algo_name = get_algo_display_name(exp_name)
-        color = ALGO_COLORS.get(algo_name, None)
-        ax.plot(df["step"], df[metric], label=algo_name, color=color, linewidth=2)
+        # color = ALGO_COLORS.get(algo_name, None)
+        # ax.plot(df["step"], df[metric], label=algo_name, color=color, linewidth=2)
+        ax.plot(df["step"], df[metric], label=algo_name, linewidth=2)
     
     if plot_visibility['show_xlabel']:
         ax.set_xlabel("Training Step", fontsize=font_sizes['xlabel'], fontfamily=font_sizes['fontfamily'])
@@ -197,6 +215,11 @@ def plot_eta_curves(
     ax.tick_params(axis='y', labelsize=font_sizes['ytick'])
     if plot_visibility['show_legend']:
         create_legend(ax, font_sizes)
+        legend = ax.get_legend()
+        if legend is not None:
+            for text in legend.get_texts():
+                text.set_fontsize(font_sizes['legend'])
+                text.set_fontfamily(font_sizes.get('fontfamily', 'Times New Roman'))
     ax.grid(True, alpha=0.3)
     ax.set_yscale("log") if metric == "delta_w_eta" else None
     
@@ -237,6 +260,11 @@ def main():
             return
         print(f"[INFO] Replot mode: loading data from {csv_path}")
         combined_df = pd.read_csv(csv_path)
+        if "experiment" in combined_df.columns:
+            combined_df = combined_df[combined_df["experiment"].apply(is_supported_algo)]
+        else:
+            allowed = set(ALGO_NAME_MAP.values())
+            combined_df = combined_df[combined_df["algorithm"].isin(allowed)]
         
         # Reconstruct all_data dict from CSV
         all_data = {}
@@ -247,7 +275,7 @@ def main():
         plot_eta_curves(
             all_data,
             metric="grad_eta",
-            ylabel="grad_eta (gradient's desire to modify principal space)",
+            ylabel=f"Grad $\eta$",
             out_path=out_dir / "grad_eta_curve",
             font_sizes=font_sizes,
             plot_visibility=plot_visibility,
@@ -258,7 +286,7 @@ def main():
         plot_eta_curves(
             all_data,
             metric="delta_w_eta",
-            ylabel="delta_w_eta (actual modification to principal space)",
+            ylabel=r"$\eta_{\Delta W}$",
             out_path=out_dir / "delta_w_eta_curve",
             font_sizes=font_sizes,
             plot_visibility=plot_visibility,
@@ -274,11 +302,15 @@ def main():
     runs = find_wandb_runs(wandb_root, args.model_filter)
     print(f"[INFO] Found {len(runs)} experiments:")
     for exp, path in sorted(runs.items()):
+        if not is_supported_algo(exp):
+            continue
         print(f"  - {exp} -> {path.name}")
     
     # Extract eta data from each run
     all_data: Dict[str, pd.DataFrame] = {}
     for exp_name, run_dir in runs.items():
+        if not is_supported_algo(exp_name):
+            continue
         log_path = run_dir / "files" / "output.log"
         records = parse_wandb_output_log(log_path)
         if records:
@@ -306,7 +338,7 @@ def main():
     plot_eta_curves(
         all_data,
         metric="grad_eta",
-        ylabel="grad_eta (gradient's desire to modify principal space)",
+        ylabel=f"Grad $\eta$",
         out_path=out_dir / "grad_eta_curve",
         font_sizes=font_sizes,
         plot_visibility=plot_visibility,
@@ -317,7 +349,7 @@ def main():
     plot_eta_curves(
         all_data,
         metric="delta_w_eta",
-        ylabel="delta_w_eta (actual modification to principal space)",
+        ylabel=r"$\eta_{\Delta W}$",
         out_path=out_dir / "delta_w_eta_curve",
         font_sizes=font_sizes,
         plot_visibility=plot_visibility,

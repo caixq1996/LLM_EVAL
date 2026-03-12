@@ -8,10 +8,14 @@
 set -x
 set -e   # 如果希望有 worker 挂掉就整 job 失败，可以打开
 
-PROJECT_NAME="VI-CURL"
-EXP_NAMES="${EXP_NAMES:-VI-CURL_deepscaler_diff}" # VI-CURL_deepscaler_diff | OPRA-LoRA
+PROJECT_NAME="LLM_EVAL"
+EXP_NAMES="${EXP_NAMES:-grpo_baselines}" # VI-CURL_deepscaler_diff | OPRA-LoRA
 MODEL_PATH="${MODEL_PATH:-giil}" # giil | checkpoints
-MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
+MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-128}"
+MAX_TOKENS="${MAX_TOKENS:-}"
+DEFAULT_MAX_TOKENS="${DEFAULT_MAX_TOKENS:-3072}"
+DEEPSEEK_MAX_TOKENS="${DEEPSEEK_MAX_TOKENS:-3072}"
+MAX_JOBS="${MAX_JOBS:-8}"
 D_SHM_DEFAULT="${D_SHM_DEFAULT:-256g}"
 D_SHM_G1="${D_SHM_G1:-64g}"
 D_SHM_G4="${D_SHM_G4:-${D_SHM_DEFAULT}}"
@@ -32,6 +36,12 @@ get_d_shm_for_jc() {
   esac
 }
 
+is_deepseek_1_5b() {
+  local name="$1"
+  [[ -n "$name" ]] || return 1
+  [[ "$name" == *DeepSeek-R1-Distill-Qwen-1.5B* || "$name" == *DeepSeek_R1_Distill_Qwen_1_5B* ]]
+}
+
 # -------------------------------------------------------
 # Adaptive submit (use p90 scheduler on submit node)
 #   - default: direct run
@@ -40,9 +50,10 @@ get_d_shm_for_jc() {
 # 解析命令行参数
 KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF:-false}"
 RUN_EVAL_MULTI_SUBMIT="${RUN_EVAL_MULTI_SUBMIT:-false}"
-MULTI_SUBMIT_BASE_ONCE="${MULTI_SUBMIT_BASE_ONCE:-false}"
+MULTI_SUBMIT_BASE_ONCE="${MULTI_SUBMIT_BASE_ONCE:-true}"
 RUN_EVAL_MULTI_SUBMIT_DEEP="${RUN_EVAL_MULTI_SUBMIT_DEEP:-false}"
-EVAL_STEPS="${EVAL_STEPS:-}" # 100,200,300,313
+FORCE_G1_FAMILY="${FORCE_G1_FAMILY:-}" # gtn, gtb, or gtn|gtb (force g1 jobclass family)
+EVAL_STEPS="${EVAL_STEPS:-313}" # 100,200,300,313
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --submit)
@@ -65,6 +76,10 @@ while [[ $# -gt 0 ]]; do
       RUN_EVAL_MULTI_SUBMIT_DEEP="true"
       shift
       ;;
+    --force-g1-family)
+      FORCE_G1_FAMILY="$2"
+      shift 2
+      ;;
     --steps)
       EVAL_STEPS="$2"
       shift 2
@@ -75,6 +90,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 export EVAL_STEPS
+export FORCE_G1_FAMILY
+EVAL_GEN_CHUNK_SIZE="${EVAL_GEN_CHUNK_SIZE:-128}"
+export EVAL_GEN_CHUNK_SIZE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
@@ -253,6 +271,7 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
       read -r base_jc_base base_n_gpus < <(select_resources_for_job "$PROJECT_NAME" "$base_job_name")
       base_jc_full="$(full_jclass_from_base "$base_jc_base")"
       base_d_shm="$(get_d_shm_for_jc "$base_jc_base")"
+      base_max_tokens="${MAX_TOKENS:-${DEFAULT_MAX_TOKENS}}"
       echo "[INFO] Submitting base-only eval job: ${base_job_name} (MODEL_ROOT=${_MODEL_ROOT})"
       qsub -N "$base_job_name" \
            -jc "$base_jc_full" \
@@ -260,6 +279,7 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
            -v NUM_GPUS="${base_n_gpus}" \
            -v MODEL_ROOT="${_MODEL_ROOT}" \
            -v EXP_NAMES="${EXP_NAMES}" \
+           -v MAX_TOKENS="${base_max_tokens}" \
            -v RUN_EVAL_SUBMITTED=1 \
            -v SKIP_STEP_EVAL=true \
            -v SKIP_BASE_EVAL=false \
@@ -298,6 +318,15 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
       job_name="${job_name//[^A-Za-z0-9_]/_}"
       job_name="${job_name:0:120}"
 
+      if [[ -n "${MAX_TOKENS}" ]]; then
+        sub_max_tokens="${MAX_TOKENS}"
+      else
+        sub_max_tokens="${DEFAULT_MAX_TOKENS}"
+        if is_deepseek_1_5b "$sub_rel" || is_deepseek_1_5b "$sub_name" || is_deepseek_1_5b "$parent_name"; then
+          sub_max_tokens="${DEEPSEEK_MAX_TOKENS}"
+        fi
+      fi
+
       if [[ "${RUN_EVAL_MULTI_SUBMIT_DEEP}" == "true" ]]; then
         _prev_allow_g1="${P90_ALLOW_G1:-}"
         P90_ALLOW_G1=1
@@ -323,6 +352,7 @@ if [[ -z "${JOB_ID:-}" && -z "${RUN_EVAL_SUBMITTED:-}" && "${RUN_EVAL_MULTI_SUBM
            -v EXP_NAMES="${EXP_NAMES}" \
            -v SUB_EXP_NAME="${sub_tag}" \
            -v DEEP_STEP_FILTER="${deep_step_filter}" \
+           -v MAX_TOKENS="${sub_max_tokens}" \
            -v RUN_EVAL_SUBMITTED=1 \
            -v KEEP_EXPORTED_HF="${KEEP_EXPORTED_HF}" \
            -V \
@@ -371,7 +401,6 @@ fi
 BASE_ROOT="${BASE_ROOT:-/hss/giil/caixq/model}"
 
 PROMPT_TYPE="${PROMPT_TYPE:-think-boxed}"
-MAX_TOKENS="${MAX_TOKENS:-3072}"
 
 # 1. 自动探测 GPU 数量
 GPU_LIST=()
@@ -415,6 +444,20 @@ else
   MODEL_ROOT="${MODEL_ROOT:-$HOME/project/${PROJECT_NAME}/checkpoints/${EXP_NAMES}}"
 fi
 
+# Default MAX_TOKENS: 1024 normally, 2048 for DeepSeek-R1-Distill-Qwen-1.5B
+if [[ -z "${MAX_TOKENS}" ]]; then
+  MAX_TOKENS="${DEFAULT_MAX_TOKENS}"
+  if is_deepseek_1_5b "${MODEL_ROOT}" || is_deepseek_1_5b "${EXP_NAMES}" || is_deepseek_1_5b "${SUB_EXP_NAME:-}"; then
+    MAX_TOKENS="${DEEPSEEK_MAX_TOKENS}"
+  else
+    if [[ -d "${MODEL_ROOT}" ]]; then
+      if find "${MODEL_ROOT}" -maxdepth 1 -mindepth 1 -type d \( -name '*DeepSeek-R1-Distill-Qwen-1.5B*' -o -name '*DeepSeek_R1_Distill_Qwen_1_5B*' \) | head -n 1 | grep -q .; then
+        MAX_TOKENS="${DEEPSEEK_MAX_TOKENS}"
+      fi
+    fi
+  fi
+fi
+
 # Multi-submit subjobs: skip base eval by default to avoid duplication.
 MULTI_SUBMIT_SKIP_BASE_EVAL="${MULTI_SUBMIT_SKIP_BASE_EVAL:-true}"
 if [[ -n "${SUB_EXP_NAME:-}" && "${MULTI_SUBMIT_SKIP_BASE_EVAL}" == "true" ]]; then
@@ -436,6 +479,19 @@ WORKER_TIMEOUT="${WORKER_TIMEOUT:-28800}"
 TS="${_TS}"
 
 echo "[INFO] Job started at ${TS}. Detected ${NUM_GPUS} GPUs."
+
+# Optional cap on concurrent GPU workers
+if [[ -n "${MAX_JOBS}" ]]; then
+  if [[ "${MAX_JOBS}" =~ ^[0-9]+$ && "${MAX_JOBS}" -ge 1 ]]; then
+    if [[ "${MAX_JOBS}" -lt "${NUM_GPUS}" ]]; then
+      NUM_GPUS="${MAX_JOBS}"
+      GPU_LIST=("${GPU_LIST[@]:0:${NUM_GPUS}}")
+      echo "[INFO] MAX_JOBS set. Capping workers to ${NUM_GPUS} GPU(s)."
+    fi
+  else
+    echo "[WARN] MAX_JOBS is not a positive integer: ${MAX_JOBS}. Ignoring."
+  fi
+fi
 
 TEMP_G1="${TEMP_G1:-0.6}"
 TEMP_G2="${TEMP_G2:-0.8}"

@@ -374,29 +374,29 @@ def call_with_timeout(func, *args, timeout=1, **kwargs):
             signal.signal(signal.SIGALRM, old_handler)
     if mode == "auto":
         try:
-            if multiprocessing.current_process().daemon:
-                def _alarm_handler(signum, frame):
-                    raise TimeoutError()
-                old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+            # Prefer SIGALRM timeout to avoid spawning a child process per call.
+            def _alarm_handler(signum, frame):
+                raise TimeoutError()
+            old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+            try:
+                signal.setitimer(signal.ITIMER_REAL, timeout)
+                q = multiprocessing.Queue()
+                kw = dict(kwargs)
+                kw["output_queue"] = q
+                ret = func(*args, **kw)
+                if ret is not None:
+                    return bool(ret)
                 try:
-                    signal.setitimer(signal.ITIMER_REAL, timeout)
-                    q = multiprocessing.Queue()
-                    kw = dict(kwargs)
-                    kw["output_queue"] = q
-                    ret = func(*args, **kw)
-                    if ret is not None:
-                        return bool(ret)
-                    try:
-                        return bool(q.get_nowait())
-                    except Exception:
-                        return False
-                except TimeoutError:
-                    return False
+                    return bool(q.get_nowait())
                 except Exception:
                     return False
-                finally:
-                    signal.setitimer(signal.ITIMER_REAL, 0)
-                    signal.signal(signal.SIGALRM, old_handler)
+            except TimeoutError:
+                return False
+            except Exception:
+                return False
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, old_handler)
         except Exception:
             pass
 
@@ -410,7 +410,10 @@ def call_with_timeout(func, *args, timeout=1, **kwargs):
         except Exception:
             q.put(False)
     p = multiprocessing.Process(target=_target, args=(output_queue, *args), kwargs=kwargs, daemon=True)
-    p.start()
+    try:
+        p.start()
+    except Exception:
+        return False
     p.join(timeout)
     if p.is_alive():
         p.terminate()

@@ -64,7 +64,6 @@ _WANDB_RUN_RE = re.compile(r"^run-")
 ALGO_NAME_MAP = {
     "vanilla": "LoRA",
     "opra": "OPRA",
-    "opra_opra": "OPRA-OPRA",
     "adalora": "AdaLoRA",
     "dora": "DoRA",
     "rslora": "RSLoRA",
@@ -76,12 +75,12 @@ ALGO_NAME_MAP = {
 }
 
 PLOT_STYLE_DEFAULTS = {
-    "xlabel": 14,
-    "ylabel": 14,
-    "legend": 12,
+    "xlabel": 18,
+    "ylabel": 18,
+    "legend": 16,
     "tick": 12,
-    "xtick": 12,
-    "ytick": 12,
+    "xtick": 14,
+    "ytick": 14,
     "title": 16,
     "colorbar": 12,
     "show_title": False,

@@ -1,0 +1,65 @@
+{
+    "num_samples": 68,
+    "num_scores": 8704,
+    "timeout_samples": 0,
+    "empty_samples": 0,
+    "acc": 0.0,
+    "total_acc": 0.0,
+    "pass_at_k_percent": {
+        "1": 0.0,
+        "8": 0.0,
+        "16": 0.0,
+        "32": 0.0,
+        "64": 0.0,
+        "128": 0.0
+    },
+    "pass_at_k_valid_counts": {
+        "1": 68,
+        "8": 68,
+        "16": 68,
+        "32": 68,
+        "64": 68,
+        "128": 68
+    },
+    "acc_std": 0.0,
+    "total_acc_std": 0.0,
+    "pass_at_k_std": {
+        "1": 0.0,
+        "8": 0.0,
+        "16": 0.0,
+        "32": 0.0,
+        "64": 0.0,
+        "128": 1.3
+    },
+    "type_acc": {
+        "Introduction to Solid State Chemistry (3.091 Fall 2010)": 0.0,
+        "Physical Chemistry (5.61 Fall 2017)": 0.0,
+        "Principles of Microeconomics (14.01 Fall 2011)": 0.0
+    },
+    "type_pass_at_k_percent": {
+        "Introduction to Solid State Chemistry (3.091 Fall 2010)": {
+            "1": 0.0,
+            "8": 0.0,
+            "16": 0.0,
+            "32": 0.0,
+            "64": 0.0,
+            "128": 0.0
+        },
+        "Physical Chemistry (5.61 Fall 2017)": {
+            "1": 0.0,
+            "8": 0.0,
+            "16": 0.0,
+            "32": 0.0,
+            "64": 0.0,
+            "128": 0.0
+        },
+        "Principles of Microeconomics (14.01 Fall 2011)": {
+            "1": 0.0,
+            "8": 0.0,
+            "16": 0.0,
+            "32": 0.0,
+            "64": 0.0,
+            "128": 0.0
+        }
+    }
+}

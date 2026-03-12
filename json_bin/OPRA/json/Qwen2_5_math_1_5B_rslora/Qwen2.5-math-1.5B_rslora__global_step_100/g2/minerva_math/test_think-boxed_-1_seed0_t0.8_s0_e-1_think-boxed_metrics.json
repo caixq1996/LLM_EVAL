@@ -1,0 +1,119 @@
+{
+    "num_samples": 272,
+    "num_scores": 34816,
+    "timeout_samples": 0,
+    "empty_samples": 0,
+    "acc": 16.5,
+    "total_acc": 18.258846507352942,
+    "pass_at_k_percent": {
+        "1": 18.3,
+        "8": 34.2,
+        "16": 39.1,
+        "32": 43.8,
+        "64": 48.1,
+        "128": 51.8
+    },
+    "pass_at_k_valid_counts": {
+        "1": 272,
+        "8": 272,
+        "16": 272,
+        "32": 272,
+        "64": 272,
+        "128": 272
+    },
+    "acc_std": 1.4,
+    "total_acc_std": 1.4,
+    "pass_at_k_std": {
+        "1": 1.4,
+        "8": 1.4,
+        "16": 1.4,
+        "32": 1.2,
+        "64": 1.1,
+        "128": 1.1
+    },
+    "type_acc": {
+        "Differential Equations (18.03 Spring 2010)": 29.2,
+        "Dynamics and Control (2.003 Spring 2005)": 34.6,
+        "Ecology I (1.018J Fall 2009)": 0.0,
+        "Information and Entropy (6.050J Spring 2008)": 33.3,
+        "Introduction to Astronomy (8.282J Spring 2006)": 11.3,
+        "Introduction to Solid State Chemistry (3.091 Fall 2010)": 11.3,
+        "Physical Chemistry (5.61 Fall 2017)": 9.1,
+        "Principles of Microeconomics (14.01 Fall 2011)": 38.9,
+        "Relativity (8.033 Fall 2006)": 0.0
+    },
+    "type_pass_at_k_percent": {
+        "Differential Equations (18.03 Spring 2010)": {
+            "1": 27.7,
+            "8": 41.3,
+            "16": 42.3,
+            "32": 43.1,
+            "64": 44.3,
+            "128": 45.8
+        },
+        "Dynamics and Control (2.003 Spring 2005)": {
+            "1": 26.8,
+            "8": 50.8,
+            "16": 56.5,
+            "32": 60.6,
+            "64": 63.5,
+            "128": 65.4
+        },
+        "Ecology I (1.018J Fall 2009)": {
+            "1": 18.8,
+            "8": 60.7,
+            "16": 73.5,
+            "32": 79.3,
+            "64": 80.0,
+            "128": 80.0
+        },
+        "Information and Entropy (6.050J Spring 2008)": {
+            "1": 45.3,
+            "8": 66.0,
+            "16": 66.7,
+            "32": 66.7,
+            "64": 66.7,
+            "128": 66.7
+        },
+        "Introduction to Astronomy (8.282J Spring 2006)": {
+            "1": 12.9,
+            "8": 25.0,
+            "16": 29.7,
+            "32": 35.7,
+            "64": 42.0,
+            "128": 47.2
+        },
+        "Introduction to Solid State Chemistry (3.091 Fall 2010)": {
+            "1": 12.7,
+            "8": 26.1,
+            "16": 30.9,
+            "32": 35.9,
+            "64": 40.3,
+            "128": 44.3
+        },
+        "Physical Chemistry (5.61 Fall 2017)": {
+            "1": 3.7,
+            "8": 20.3,
+            "16": 28.7,
+            "32": 35.3,
+            "64": 40.4,
+            "128": 45.5
+        },
+        "Principles of Microeconomics (14.01 Fall 2011)": {
+            "1": 39.7,
+            "8": 65.5,
+            "16": 71.7,
+            "32": 77.5,
+            "64": 83.7,
+            "128": 88.9
+        },
+        "Relativity (8.033 Fall 2006)": {
+            "1": 3.6,
+            "8": 22.7,
+            "16": 35.4,
+            "32": 47.6,
+            "64": 56.8,
+            "128": 63.6
+        }
+    }
+}

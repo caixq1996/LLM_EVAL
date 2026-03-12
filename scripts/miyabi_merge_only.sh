@@ -63,14 +63,7 @@ PYTHON="${WORK_HOME}/miniconda3/envs/eval/bin/python"
 
 # 设置 Pass@k 环境变量 (merge_results.py 中 evaluate 可能会用到)
 if [[ -z "${PASS_AT_KS:-}" ]]; then
-  default_pass_ks=(1 8 16 32 64 128 256)
-  pass_ks=()
-  for k in "${default_pass_ks[@]}"; do
-    if (( k > 0 && k <= MAX_SAMPLE_NUMS )) && [[ " ${pass_ks[*]} " != *" $k "* ]]; then
-      pass_ks+=("$k")
-    fi
-  done
-  PASS_AT_KS=$(IFS=,; echo "${pass_ks[*]}")
+  PASS_AT_KS="1,2,8,16,32,64,128,256,512,1024"
 fi
 export PASS_AT_KS
 echo "[INFO] PASS_AT_KS: ${PASS_AT_KS}"

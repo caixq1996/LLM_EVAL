@@ -31,6 +31,7 @@ if str(EVAL_ROOT) not in sys.path:
 from math_eval import main as eval_one_dataset
 from model_utils import load_hf_lm_and_tokenizer
 from tools.export_fsdp_dtensor_to_hf import export_one_step_to_hf, list_step_dirs
+from tools.eval_result_state import check_missing_by_group as check_missing_by_group_state
 
 try:
     from vllm import LLM
@@ -304,17 +305,12 @@ def _is_dataset_complete(ds_dir, ds_name):
     
     return total_samples >= expected
 
-def check_missing_by_group(out_root, run_name):
-    missing = {1: [], 2: []}
-    run_out = out_root / run_name
-    for group_idx, datasets in enumerate(GROUP_DATASETS, start=1):
-        gdir = run_out / f'g{group_idx}'
-        ds_list = _split_ds_list(datasets)
-        for ds in ds_list:
-            ds_dir = gdir / ds
-            if not _is_dataset_complete(ds_dir, ds):
-                missing[group_idx].append(ds)
-    return missing
+def check_missing_by_group(out_root, run_name, final_required=False):
+    return check_missing_by_group_state(
+        out_root=Path(out_root),
+        run_name=run_name,
+        final_required=bool(final_required),
+    )
 
 # [FIX] 增加 shard_id 和 num_shards 参数
 def build_args_template(prompt_type, max_tokens, use_vllm, vllm_batch_size, pipeline_parallel_size, shard_id=0, num_shards=1):
@@ -342,7 +338,7 @@ def build_args_template(prompt_type, max_tokens, use_vllm, vllm_batch_size, pipe
     args.use_vllm = bool(use_vllm)
     args.vllm_batch_size = int(vllm_batch_size) if vllm_batch_size else 0
     args.save_outputs = True
-    args.overwrite = True
+    args.overwrite = os.getenv("EVAL_OVERWRITE", "false").lower() in ("true", "1", "yes")
     args.use_safetensors = True
     args.num_shots = 0
     args.apply_chat_template = False
@@ -472,6 +468,7 @@ def run_groups_with_shared_llm(
                     args.n_sampling = int(n_sampling)
                     args.top_p = 1.0 if args.temperature == 0 else 1.0
                     args.output_dir = str(gdir)
+                    args.model_name_or_path = str(model_dir)
 
                     result = eval_one_dataset(llm, tokenizer, ds, args)
                     print(f'[{_now()}] ✓ {run_name}/g{group_idx}/{ds}  acc={result.get("acc", "nan")} pass_at_k={result.get("pass_at_k_percent", {})}', flush=True)

@@ -1,0 +1,22 @@
+{
+    "num_samples": 180,
+    "timeout_samples": 0,
+    "empty_samples": 0,
+    "acc": 9.4,
+    "total_acc": 8.541666666666666,
+    "pass_at_k_percent": {
+        "1": 8.5,
+        "8": 25.0
+    },
+    "pass_at_k_valid_counts": {
+        "1": 180,
+        "8": 180
+    },
+    "acc_std": 0.7,
+    "total_acc_std": 0.7,
+    "pass_at_k_std": {
+        "1": 0.7,
+        "8": 1.0
+    },
+    "time_use_in_second": 0
+}

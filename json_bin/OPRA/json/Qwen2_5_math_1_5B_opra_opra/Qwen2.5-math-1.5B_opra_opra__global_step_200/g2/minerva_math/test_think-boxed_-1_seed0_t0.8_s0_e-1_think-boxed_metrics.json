@@ -1,0 +1,59 @@
+{
+    "num_samples": 272,
+    "num_scores": 34816,
+    "timeout_samples": 0,
+    "empty_samples": 0,
+    "acc": 26.5,
+    "total_acc": 25.407858455882355,
+    "pass_at_k_percent": {
+        "1": 25.4
+    },
+    "pass_at_k_valid_counts": {
+        "1": 272
+    },
+    "type_acc": {
+        "Differential Equations (18.03 Spring 2010)": 29.2,
+        "Dynamics and Control (2.003 Spring 2005)": 50.0,
+        "Ecology I (1.018J Fall 2009)": 20.0,
+        "Information and Entropy (6.050J Spring 2008)": 33.3,
+        "Introduction to Astronomy (8.282J Spring 2006)": 17.0,
+        "Introduction to Solid State Chemistry (3.091 Fall 2010)": 20.6,
+        "Physical Chemistry (5.61 Fall 2017)": 27.3,
+        "Principles of Microeconomics (14.01 Fall 2011)": 66.7,
+        "Relativity (8.033 Fall 2006)": 9.1
+    },
+    "type_pass_at_k_percent": {
+        "Differential Equations (18.03 Spring 2010)": {
+            "1": 30.3
+        },
+        "Dynamics and Control (2.003 Spring 2005)": {
+            "1": 41.8
+        },
+        "Ecology I (1.018J Fall 2009)": {
+            "1": 26.4
+        },
+        "Information and Entropy (6.050J Spring 2008)": {
+            "1": 32.8
+        },
+        "Introduction to Astronomy (8.282J Spring 2006)": {
+            "1": 17.1
+        },
+        "Introduction to Solid State Chemistry (3.091 Fall 2010)": {
+            "1": 19.8
+        },
+        "Physical Chemistry (5.61 Fall 2017)": {
+            "1": 20.5
+        },
+        "Principles of Microeconomics (14.01 Fall 2011)": {
+            "1": 51.3
+        },
+        "Relativity (8.033 Fall 2006)": {
+            "1": 15.0
+        }
+    },
+    "acc_std": 1.6,
+    "total_acc_std": 1.6,
+    "pass_at_k_std": {
+        "1": 1.6
+    }
+}

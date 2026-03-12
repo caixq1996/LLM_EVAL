@@ -1,0 +1,28 @@
+{
+    "num_samples": 125,
+    "num_scores": 4000,
+    "timeout_samples": 0,
+    "empty_samples": 0,
+    "acc": 72.0,
+    "total_acc": 73.875,
+    "pass_at_k_percent": {
+        "1": 73.9,
+        "8": 88.3,
+        "16": 91.1,
+        "32": 92.8
+    },
+    "pass_at_k_valid_counts": {
+        "1": 125,
+        "8": 125,
+        "16": 125,
+        "32": 125
+    },
+    "acc_std": 2.1,
+    "total_acc_std": 2.1,
+    "pass_at_k_std": {
+        "1": 2.1,
+        "8": 1.2,
+        "16": 0.9,
+        "32": 0.2
+    }
+}

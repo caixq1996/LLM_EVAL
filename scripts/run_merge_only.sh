@@ -8,16 +8,9 @@ OUT_ROOT="${OUT_ROOT:-$HOME/project/${PROJECT_NAME}/eval_results/${EXP_NAMES}_${
 PYTHON_BIN="${PYTHON_BIN:-$HOME/miniconda3/envs/eval/bin/python3}"
 MAX_SAMPLE_NUMS="${MAX_SAMPLE_NUMS:-8}"
 
-# PASS@k 列表（受 MAX_SAMPLE_NUMS 限制）
+# PASS@k 列表（merge 时尽可能计算更大的 k）
 if [[ -z "${PASS_AT_KS:-}" ]]; then
-  default_pass_ks=(1 8 16 32 64 128 256)
-  pass_ks=()
-  for k in "${default_pass_ks[@]}"; do
-    if (( k > 0 && k <= MAX_SAMPLE_NUMS )) && [[ " ${pass_ks[*]} " != *" $k "* ]]; then
-      pass_ks+=("$k")
-    fi
-  done
-  PASS_AT_KS=$(IFS=,; echo "${pass_ks[*]}")
+  PASS_AT_KS="1,2,8,16,32,64,128,256,512,1024"
 fi
 export PASS_AT_KS
 

@@ -123,6 +123,65 @@ def prepare_data(data_name, args):
     examples = [example for example in examples if example['idx'] not in processed_idxs]
     return (examples, processed_samples, out_file)
 
+def _get_gen_chunk_size() -> int:
+    val = os.getenv("EVAL_GEN_CHUNK_SIZE")
+    if val is None or str(val).strip() == "":
+        return 0
+    try:
+        size = int(val)
+        return max(1, size)
+    except ValueError:
+        return 0
+
+def _get_vllm_max_model_len() -> int:
+    val = os.getenv("VLLM_MAX_MODEL_LEN", "4096")
+    try:
+        return max(1, int(val))
+    except ValueError:
+        return 4096
+
+def _get_vllm_tokenizer(llm, tokenizer, args):
+    if tokenizer is not None:
+        return tokenizer
+    if llm is not None and hasattr(llm, "get_tokenizer"):
+        try:
+            return llm.get_tokenizer()
+        except Exception:
+            pass
+    try:
+        if args and getattr(args, "model_name_or_path", ""):
+            return AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True)
+    except Exception:
+        return None
+    return None
+
+def _adjust_prompts_for_max_len(prompts, tokenizer, max_model_len):
+    if tokenizer is None or not prompts:
+        return prompts, 0, False
+    lengths = []
+    for p in prompts:
+        try:
+            lengths.append(len(tokenizer.encode(p, add_special_tokens=False)))
+        except Exception:
+            lengths.append(0)
+    max_prompt_len = max(lengths) if lengths else 0
+    truncated = False
+    if max_prompt_len > max_model_len:
+        new_prompts = []
+        for p, l in zip(prompts, lengths):
+            if l > max_model_len:
+                try:
+                    ids = tokenizer.encode(p, add_special_tokens=False)
+                    ids = ids[-max_model_len:]
+                    p = tokenizer.decode(ids, skip_special_tokens=True)
+                    truncated = True
+                except Exception:
+                    pass
+            new_prompts.append(p)
+        prompts = new_prompts
+        max_prompt_len = max_model_len
+    return prompts, max_prompt_len, truncated
+
 def setup(args):
     available_gpus = os.environ['CUDA_VISIBLE_DEVICES'].split(',')
     if args.use_vllm:
@@ -148,52 +207,22 @@ def is_multi_choice(answer):
             return False
     return True
 
-def main(llm, tokenizer, data_name, args):
-    examples, processed_samples, out_file = prepare_data(data_name, args)
-    print('=' * 50)
-    print('data:', data_name, ' ,remain samples:', len(examples))
-    if len(examples) > 0:
-        print(examples[0])
-    if 'pal' in args.prompt_type:
-        executor = PythonExecutor(get_answer_expr='solution()')
-    else:
-        executor = PythonExecutor(get_answer_from_stdout=True)
-    samples = []
-    for example in tqdm(examples, total=len(examples)):
-        idx = example['idx']
-        example['question'] = parse_question(example, data_name)
-        if example['question'] == '':
-            continue
-        gt_cot, gt_ans = parse_ground_truth(example, data_name)
-        example['gt_ans'] = gt_ans
-        full_prompt = construct_prompt(example, data_name, args)
-        if idx == args.start:
-            print(full_prompt)
-        sample = {'idx': idx, 'question': example['question'], 'gt_cot': gt_cot, 'gt': gt_ans, 'prompt': full_prompt}
-        for key in ['level', 'type', 'unit', 'solution_type', 'choices', 'solution', 'ques_type', 'ans_type', 'answer_type', 'dataset', 'subfield', 'filed', 'theorem', 'answer', 'difficulty']:
-            if key in example:
-                sample[key] = example[key]
-        samples.append(sample)
-    
+def _run_one_chunk(llm, tokenizer, samples, data_name, args):
     # [PERF-OPT] 使用 vLLM 的 n 参数进行批量采样，而非复制 prompt
-    # 这可以利用 KV cache 共享，大幅提升 pass@k 评测效率
     # 注意：vLLM 要求 temperature=0 时 n 必须为 1（贪婪采样）
     use_vllm_n_sampling = args.use_vllm and args.n_sampling > 1 and args.temperature > 0
-    
+
     if use_vllm_n_sampling:
-        # vLLM 模式：每个 prompt 只保留一份，通过 n 参数生成多个采样
         unique_prompts = [sample['prompt'] for sample in samples]
         if args.apply_chat_template:
             unique_prompts = [tokenizer.apply_chat_template([{'role': 'user', 'content': prompt.strip()}], tokenize=False, add_generation_prompt=True) for prompt in unique_prompts]
         input_prompts = unique_prompts
     else:
-        # 非 vLLM 或 n_sampling=1：传统方式复制 prompt
         input_prompts = [sample['prompt'] for sample in samples for _ in range(args.n_sampling)]
         if args.apply_chat_template:
             input_prompts = [tokenizer.apply_chat_template([{'role': 'user', 'content': prompt.strip()}], tokenize=False, add_generation_prompt=True) for prompt in input_prompts]
-    
-    remain_prompts = input_prompts
-    remain_prompts = [(i, prompt) for i, prompt in enumerate(remain_prompts)]
+
+    remain_prompts = [(i, prompt) for i, prompt in enumerate(input_prompts)]
     end_prompts = []
     max_func_call = 1 if args.prompt_type in ['cot', 'pal'] else 4
     stop_words = ['</s>', '<|im_end|>', '<|endoftext|>']
@@ -209,7 +238,12 @@ def main(llm, tokenizer, data_name, args):
         stop_words.append('\n### Problem')
     elif 'pure' in args.prompt_type:
         stop_words.append('\n\n\n')
-    start_time = time.time()
+
+    if 'pal' in args.prompt_type:
+        executor = PythonExecutor(get_answer_expr='solution()')
+    else:
+        executor = PythonExecutor(get_answer_from_stdout=True)
+
     result_prompts = []
     for epoch in range(max_func_call):
         print('-' * 20, 'Epoch', epoch)
@@ -218,58 +252,76 @@ def main(llm, tokenizer, data_name, args):
             break
         prompts = [item[1] for item in current_prompts]
         result_prompts.extend(prompts)
+        remain_prompts = []
+        remain_codes = []
+
+        epoch_use_vllm_n_sampling = use_vllm_n_sampling and epoch == 0
+        n_per_prompt = args.n_sampling if epoch_use_vllm_n_sampling else 1
         if args.use_vllm:
             total_prompts = len(prompts)
-            # 确定实际的 n 参数
-            n_per_prompt = args.n_sampling if use_vllm_n_sampling else 1
+            tok = _get_vllm_tokenizer(llm, tokenizer, args)
+            max_model_len = _get_vllm_max_model_len()
+            adj_prompts, max_prompt_len, truncated = _adjust_prompts_for_max_len(prompts, tok, max_model_len)
+            if truncated:
+                print(f"[WARN] Truncated prompt(s) to max_model_len={max_model_len}", flush=True)
+            if adj_prompts != prompts:
+                prompts = adj_prompts
+                current_prompts = [(current_prompts[i][0], prompts[i]) for i in range(len(prompts))]
+                if epoch == 0:
+                    input_prompts = prompts
+            if max_prompt_len > 0:
+                available = max_model_len - max_prompt_len
+                if available < 1:
+                    available = 1
+                if available < args.max_tokens_per_call:
+                    print(f"[WARN] max_tokens_per_call {args.max_tokens_per_call} -> {available} (max_model_len={max_model_len}, max_prompt_len={max_prompt_len})", flush=True)
+                    effective_max_tokens = available
+                else:
+                    effective_max_tokens = args.max_tokens_per_call
+            else:
+                effective_max_tokens = args.max_tokens_per_call
             print(f'  [Sampling] Starting generation: {total_prompts} prompts x {n_per_prompt} samples/prompt = {total_prompts * n_per_prompt} total', flush=True)
             gen_start = time.time()
-            
-            # 构建 SamplingParams，使用 n 参数进行并行采样
-            # 注意：不设置 best_of，让 vLLM 自动调度批量大小以避免显存溢出
             stop_token_ids = [151645, 151643] if 'qwen2' in args.model_name_or_path.lower() else None
             sampling_params = SamplingParams(
-                temperature=args.temperature, 
-                max_tokens=args.max_tokens_per_call, 
-                stop=stop_words, 
+                temperature=args.temperature,
+                max_tokens=effective_max_tokens,
+                stop=stop_words,
                 stop_token_ids=stop_token_ids,
-                n=n_per_prompt,  # [PERF-OPT] 每个 prompt 生成 n 个采样，vLLM 自动分批
+                n=n_per_prompt,
                 top_p=1.0 if args.temperature > 0 else 1.0,
             )
-            
-            # [PERF-OPT] vLLM 内部会自动进行高效的 continuous batching
-            # 不需要手动分批，直接发送所有 prompts，让 vLLM 调度
             print(f'  [Sampling] Sending all {total_prompts} prompts to vLLM (n={n_per_prompt} per prompt)...', flush=True)
             results = llm.generate(prompts, sampling_params, use_tqdm=True)
             results = sorted(results, key=lambda x: int(x.request_id))
-            
-            # 展开多个输出：每个 request 有 n 个 outputs
             outputs = []
             for result in results:
                 for out in result.outputs:
                     outputs.append(out.text)
-            
             gen_time = time.time() - gen_start
             throughput = len(outputs) / gen_time if gen_time > 0 else 0
             print(f'  [Sampling] Generated {len(outputs)} outputs in {gen_time:.1f}s ({throughput:.1f} samples/s)', flush=True)
         else:
-            outputs = generate_completions(model=llm, tokenizer=tokenizer, prompts=prompts, max_new_tokens=args.max_tokens_per_call, batch_size=16, stop_id_sequences=stop_words)
-        assert len(outputs) == len(current_prompts) * (args.n_sampling if use_vllm_n_sampling else 1), f"Expected {len(current_prompts) * (args.n_sampling if use_vllm_n_sampling else 1)} outputs, got {len(outputs)}"
-        remain_prompts = []
-        remain_codes = []
-        
-        # 处理 n-sampling 模式下的输出
-        if use_vllm_n_sampling:
-            # n-sampling 模式：每个 prompt 有 n 个输出
+            outputs = generate_completions(
+                model=llm,
+                tokenizer=tokenizer,
+                prompts=prompts,
+                max_new_tokens=args.max_tokens_per_call,
+                batch_size=16,
+                stop_id_sequences=stop_words,
+            )
+
+        expected_outputs = len(current_prompts) * n_per_prompt
+        assert len(outputs) == expected_outputs, f"Expected {expected_outputs} outputs, got {len(outputs)}"
+
+        if epoch_use_vllm_n_sampling:
             output_idx = 0
             for (i, query) in current_prompts:
                 for sample_idx in range(args.n_sampling):
                     output = outputs[output_idx].rstrip()
                     output_idx += 1
                     full_query = query + output
-                    # 计算展开后的索引
                     expanded_idx = i * args.n_sampling + sample_idx
-                    
                     if args.prompt_type == 'pal':
                         remain_prompts.append((expanded_idx, full_query))
                         if '```python' in output:
@@ -284,7 +336,6 @@ def main(llm, tokenizer, data_name, args):
                     else:
                         end_prompts.append((expanded_idx, full_query))
         else:
-            # 传统模式：一对一映射
             for (i, query), output in zip(current_prompts, outputs):
                 output = output.rstrip()
                 query += output
@@ -301,35 +352,33 @@ def main(llm, tokenizer, data_name, args):
                     remain_codes.append(program)
                 else:
                     end_prompts.append((i, query))
-        remain_results = executor.batch_apply(remain_codes)
-        for k in range(len(remain_prompts)):
-            i, query = remain_prompts[k]
-            res, report = remain_results[k]
-            exec_result = res if res else report
-            if 'pal' in args.prompt_type:
-                exec_result = '\\boxed{' + exec_result + '}'
-            exec_result = f'\n```output\n{exec_result}\n```\n'
-            query += exec_result
-            if epoch == max_func_call - 1:
-                query += '\nReach max function call limit.'
-            remain_prompts[k] = (i, query)
+
+        if remain_codes:
+            remain_results = executor.batch_apply(remain_codes)
+            for k in range(len(remain_prompts)):
+                i, query = remain_prompts[k]
+                res, report = remain_results[k]
+                exec_result = res if res else report
+                if 'pal' in args.prompt_type:
+                    exec_result = '\\boxed{' + exec_result + '}'
+                exec_result = f'\n```output\n{exec_result}\n```\n'
+                query += exec_result
+                if epoch == max_func_call - 1:
+                    query += '\nReach max function call limit.'
+                remain_prompts[k] = (i, query)
+
     print('Unsolved samples:', len(remain_prompts))
     end_prompts.extend(remain_prompts)
     end_prompts = sorted(end_prompts, key=lambda x: x[0])
-    codes = []
-    
-    # n-sampling 模式下，input_prompts 是 unique prompts，但 end_prompts 有 n_sampling 倍
     expected_count = len(samples) * args.n_sampling
     assert len(end_prompts) == expected_count, f"Expected {expected_count} end_prompts, got {len(end_prompts)}"
-    
+
+    codes = []
     for i in range(len(end_prompts)):
         _, end_prompt = end_prompts[i]
-        # 获取对应的原始 prompt（n-sampling 模式下需要除以 n_sampling）
         if use_vllm_n_sampling:
             base_prompt_idx = i // args.n_sampling
-            base_prompt = [sample['prompt'] for sample in samples][base_prompt_idx]
-            if args.apply_chat_template:
-                base_prompt = tokenizer.apply_chat_template([{'role': 'user', 'content': base_prompt.strip()}], tokenize=False, add_generation_prompt=True) if tokenizer else base_prompt
+            base_prompt = input_prompts[base_prompt_idx]
         else:
             base_prompt = input_prompts[i]
         code = end_prompt.split(base_prompt)[-1].strip()
@@ -337,8 +386,8 @@ def main(llm, tokenizer, data_name, args):
             if stop_word in code:
                 code = code.split(stop_word)[0].strip()
         codes.append(code)
+
     results = [run_execute(executor, code, args.prompt_type, data_name) for code in codes]
-    time_use = time.time() - start_time
     all_samples = []
     for i, sample in enumerate(samples):
         code = codes[i * args.n_sampling:(i + 1) * args.n_sampling]
@@ -353,12 +402,57 @@ def main(llm, tokenizer, data_name, args):
         sample.pop('prompt')
         sample.update({'code': code, 'pred': preds, 'report': reports})
         all_samples.append(sample)
+
+    return all_samples, result_prompts
+
+def main(llm, tokenizer, data_name, args):
+    examples, processed_samples, out_file = prepare_data(data_name, args)
+    print('=' * 50)
+    print('data:', data_name, ' ,remain samples:', len(examples))
+    if len(examples) > 0:
+        print(examples[0])
+
+    samples = []
+    for example in tqdm(examples, total=len(examples)):
+        idx = example['idx']
+        example['question'] = parse_question(example, data_name)
+        if example['question'] == '':
+            continue
+        gt_cot, gt_ans = parse_ground_truth(example, data_name)
+        example['gt_ans'] = gt_ans
+        full_prompt = construct_prompt(example, data_name, args)
+        if idx == args.start:
+            print(full_prompt)
+        sample = {'idx': idx, 'question': example['question'], 'gt_cot': gt_cot, 'gt': gt_ans, 'prompt': full_prompt}
+        for key in ['level', 'type', 'unit', 'solution_type', 'choices', 'solution', 'ques_type', 'ans_type', 'answer_type', 'dataset', 'subfield', 'filed', 'theorem', 'answer', 'difficulty']:
+            if key in example:
+                sample[key] = example[key]
+        samples.append(sample)
+
+    start_time = time.time()
+    chunk_size = _get_gen_chunk_size()
+    if chunk_size <= 0:
+        chunk_size = len(samples) if samples else 1
+    print(f"[INFO] Generation chunk size: {chunk_size}")
+    all_samples = []
+    result_prompts = []
+    for start in range(0, len(samples), chunk_size):
+        chunk_samples = samples[start:start + chunk_size]
+        if not chunk_samples:
+            continue
+        chunk_outputs, chunk_prompts = _run_one_chunk(llm, tokenizer, chunk_samples, data_name, args)
+        all_samples.extend(chunk_outputs)
+        result_prompts.extend(chunk_prompts)
+        if args.save_outputs:
+            save_jsonl(processed_samples + all_samples, out_file)
+            print(f"[INFO] Saved {len(processed_samples) + len(all_samples)} samples (partial) to {out_file}")
+
     all_samples.extend(processed_samples)
     all_samples, result_json = evaluate(samples=all_samples, data_name=data_name, prompt_type=args.prompt_type, execute=True)
     if len(processed_samples) < len(all_samples) and args.save_outputs:
         save_jsonl(all_samples, out_file)
-    result_json['time_use_in_second'] = time_use
-    result_json['time_use_in_minite'] = f'{int(time_use // 60)}:{int(time_use % 60):02d}'
+    result_json['time_use_in_second'] = time.time() - start_time
+    result_json['time_use_in_minite'] = f'{int(result_json["time_use_in_second"] // 60)}:{int(result_json["time_use_in_second"] % 60):02d}'
     result_json['prompts'] = result_prompts
     with open(out_file.replace('.jsonl', f'_{args.prompt_type}_metrics.json'), 'w') as f:
         json.dump(result_json, f, indent=4)
